@@ -83,20 +83,58 @@ class TimeTrackingDataTable extends StatelessWidget {
     }
   }
 
+  IconData _columnIcon(String colId) {
+    switch (colId) {
+      case 'date':
+        return Icons.calendar_today;
+      case 'hours':
+        return Icons.schedule;
+      case 'work_package':
+        return Icons.work;
+      case 'comment':
+        return Icons.comment_outlined;
+      case 'activity':
+        return Icons.category_outlined;
+      case 'user':
+        return Icons.person_outline;
+      default:
+        return Icons.info_outline;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     if (entries.isEmpty) {
       return Card(
+        elevation: 0,
+        color: theme.colorScheme.surfaceContainerLow,
         child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Center(
-            child: Text(
-              'Zaman kaydı yok.',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+          padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.schedule,
+                size: 48,
+                color: theme.colorScheme.onSurfaceVariant.withOpacity(0.5),
               ),
-            ),
+              const SizedBox(height: 12),
+              Text(
+                'Zaman kaydı yok.',
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Kolonlar menüsünden "İş" ekleyebilirsiniz.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant.withOpacity(0.8),
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
           ),
         ),
       );
@@ -121,56 +159,17 @@ class TimeTrackingDataTable extends StatelessWidget {
     ThemeData theme,
     List<TimeEntry> list,
   ) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: DataTable(
-        headingRowColor: WidgetStateProperty.all(
-          theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
-        ),
-        columns: [
-          for (final colId in columnIds)
-            DataColumn(
-              label: Text(
-                _columnLabel(colId),
-                style: theme.textTheme.labelLarge?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          const DataColumn(label: SizedBox.shrink()),
-        ],
-        rows: [
-          for (final e in list)
-            DataRow(
-              cells: [
-                for (final colId in columnIds)
-                  DataCell(
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 180),
-                      child: Text(
-                        _cellText(e, colId),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall,
-                      ),
-                    ),
-                  ),
-                DataCell(
-                  trailingBuilder?.call(e) ??
-                      (onEntryTap != null
-                          ? const Icon(Icons.chevron_right, size: 20)
-                          : const SizedBox.shrink()),
-                ),
-              ],
-              onSelectChanged: onEntryTap != null
-                  ? (_) {
-                      lightImpact();
-                      onEntryTap!(e);
-                    }
-                  : null,
-            ),
-        ],
-      ),
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: list.length,
+      itemBuilder: (context, index) {
+        final e = list[index];
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: _buildEntryCard(context, theme, e),
+        );
+      },
     );
   }
 
@@ -189,11 +188,12 @@ class TimeTrackingDataTable extends StatelessWidget {
         final total = items.fold(0.0, (s, e) => s + e.hours);
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
+          elevation: 1,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _groupHeader(theme, _formatDate(day), total),
-              ...items.map((e) => _buildRow(context, theme, e)),
+              _groupHeader(theme, Icons.today, _formatDate(day), total),
+              ...items.map((e) => _buildEntryCard(context, theme, e)),
             ],
           ),
         );
@@ -218,11 +218,12 @@ class TimeTrackingDataTable extends StatelessWidget {
         final label = '${_formatDate(weekStart)} – ${_formatDate(weekEnd)}';
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
+          elevation: 1,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _groupHeader(theme, label, total),
-              ...items.map((e) => _buildRow(context, theme, e)),
+              _groupHeader(theme, Icons.date_range, label, total),
+              ...items.map((e) => _buildEntryCard(context, theme, e)),
             ],
           ),
         );
@@ -245,11 +246,12 @@ class TimeTrackingDataTable extends StatelessWidget {
         final total = items.fold(0.0, (s, e) => s + e.hours);
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
+          elevation: 1,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _groupHeader(theme, _formatMonth(monthStart), total),
-              ...items.map((e) => _buildRow(context, theme, e)),
+              _groupHeader(theme, Icons.calendar_month, _formatMonth(monthStart), total),
+              ...items.map((e) => _buildEntryCard(context, theme, e)),
             ],
           ),
         );
@@ -275,11 +277,12 @@ class TimeTrackingDataTable extends StatelessWidget {
         final label = key == '—' ? 'İş belirtilmemiş' : (items.first.workPackageSubject ?? '#${items.first.workPackageId}');
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
+          elevation: 1,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _groupHeader(theme, label, total),
-              ...items.map((e) => _buildRow(context, theme, e)),
+              _groupHeader(theme, Icons.work, label, total),
+              ...items.map((e) => _buildEntryCard(context, theme, e)),
             ],
           ),
         );
@@ -287,26 +290,39 @@ class TimeTrackingDataTable extends StatelessWidget {
     );
   }
 
-  Widget _groupHeader(ThemeData theme, String title, double totalHours) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+  Widget _groupHeader(ThemeData theme, IconData icon, String title, double totalHours) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primaryContainer.withOpacity(0.5),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+      ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
+          Icon(icon, size: 22, color: theme.colorScheme.onPrimaryContainer),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
               title,
               style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: theme.colorScheme.primary,
+                fontWeight: FontWeight.w700,
+                color: theme.colorScheme.onPrimaryContainer,
               ),
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          Text(
-            '${totalHours.toStringAsFixed(1)} s',
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w600,
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primary.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              '${totalHours.toStringAsFixed(1)} s',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: theme.colorScheme.primary,
+              ),
             ),
           ),
         ],
@@ -314,40 +330,102 @@ class TimeTrackingDataTable extends StatelessWidget {
     );
   }
 
-  Widget _buildRow(BuildContext context, ThemeData theme, TimeEntry e) {
-    final subtitleParts = <String>[];
-    for (final colId in columnIds) {
-      if (colId == 'hours' || colId == 'date') continue;
-      final t = _cellText(e, colId);
-      if (t != '—' && t.isNotEmpty) subtitleParts.add(t);
-    }
-    return ListTile(
-      dense: true,
-      title: Text(
-        '${_cellText(e, 'hours')} · ${_cellText(e, 'date')}',
-        style: theme.textTheme.bodyMedium?.copyWith(
-          fontWeight: FontWeight.w500,
+  /// Zaman kaydı satırı: solda saat/tarih, sağda kategori (aktivite). Yorum ve iş detayı tıklanınca sheet'te.
+  Widget _buildEntryCard(BuildContext context, ThemeData theme, TimeEntry e) {
+    final activityLabel = e.activityName ?? '—';
+    final hasActivity = activityLabel != '—' && activityLabel.isNotEmpty;
+
+    return Material(
+      color: theme.colorScheme.surface,
+      child: InkWell(
+        onTap: onEntryTap != null
+            ? () {
+                lightImpact();
+                onEntryTap!(e);
+              }
+            : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primaryContainer.withOpacity(0.6),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  Icons.schedule,
+                  size: 24,
+                  color: theme.colorScheme.onPrimaryContainer,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _cellText(e, 'hours'),
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _cellText(e, 'date'),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (hasActivity)
+                Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.secondaryContainer.withOpacity(0.8),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.category_outlined,
+                        size: 16,
+                        color: theme.colorScheme.onSecondaryContainer,
+                      ),
+                      const SizedBox(width: 6),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 120),
+                        child: Text(
+                          activityLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: theme.colorScheme.onSecondaryContainer,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              if (onEntryTap != null)
+                Icon(
+                  Icons.chevron_right,
+                  size: 22,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+            ],
+          ),
         ),
       ),
-      subtitle: subtitleParts.isEmpty
-          ? null
-          : Text(
-              subtitleParts.join(' · '),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-      trailing: onEntryTap != null
-          ? (trailingBuilder?.call(e) ?? const Icon(Icons.chevron_right, size: 20))
-          : trailingBuilder?.call(e),
-      onTap: onEntryTap != null
-          ? () {
-              lightImpact();
-              onEntryTap!(e);
-            }
-          : null,
     );
   }
 }

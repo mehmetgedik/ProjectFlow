@@ -506,6 +506,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           IconButton(
             onPressed: () {
               lightImpact();
+              Navigator.of(context).pushNamed('/profile');
+            },
+            icon: const Icon(Icons.person_outline, size: 20),
+            tooltip: 'Profil',
+          ),
+          IconButton(
+            onPressed: () {
+              lightImpact();
               Navigator.of(context).pushNamed('/time-tracking');
             },
             icon: const Icon(Icons.schedule, size: 20),

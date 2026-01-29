@@ -12,7 +12,11 @@ import '../utils/error_messages.dart';
 import '../utils/haptic.dart';
 import '../widgets/time_tracking_data_table.dart';
 import '../widgets/time_tracking_entry_detail_sheet.dart';
+import '../widgets/time_entries_gantt.dart';
+import '../widgets/work_package_list_actions.dart';
 import 'work_package_detail_screen.dart';
+
+enum _TimeViewMode { table, gantt }
 
 /// Zaman takibi sayfası: varsayılan/özel kolonlar, gruplama, ekip modu, detay + işe git.
 class TimeTrackingScreen extends StatefulWidget {
@@ -31,6 +35,9 @@ class _TimeTrackingScreenState extends State<TimeTrackingScreen> {
   bool _showTeam = false;
   String? _selectedUserId;
   List<Map<String, String>> _projectMembers = const [];
+  /// Başkasının zaman kayıtlarını görme yetkisi (null = henüz kontrol edilmedi).
+  bool? _canViewTeamTime;
+  _TimeViewMode _viewMode = _TimeViewMode.table;
 
   static DateTime get _now => DateTime.now();
   static DateTime get _today => DateTime(_now.year, _now.month, _now.day);
@@ -371,8 +378,38 @@ class _TimeTrackingScreenState extends State<TimeTrackingScreen> {
         _projectMembers = list;
         if (_selectedUserId == null && list.isNotEmpty) _selectedUserId = list.first['id'];
       });
+      _probeCanViewTeamTime(client, myId, list);
     } catch (_) {
       if (mounted) setState(() => _projectMembers = []);
+    }
+  }
+
+  /// Başkasının zaman kayıtlarını görme yetkisi var mı (yönetici/izin) — API ile dener.
+  Future<void> _probeCanViewTeamTime(OpenProjectClient client, String? myId, List<Map<String, String>> members) async {
+    final others = members.where((m) => m['id'] != myId).map((m) => m['id']).whereType<String>().toList();
+    final otherUserId = others.isNotEmpty ? others.first : null;
+    if (otherUserId == null || otherUserId.isEmpty) {
+      if (!mounted) return;
+      setState(() => _canViewTeamTime = false);
+      return;
+    }
+    try {
+      final start = _today.subtract(const Duration(days: 7));
+      final end = _today.add(const Duration(days: 1));
+      await client.getMyTimeEntries(from: start, to: end, userId: otherUserId);
+      if (!mounted) return;
+      setState(() => _canViewTeamTime = true);
+    } catch (e) {
+      final msg = e.toString();
+      final forbidden = msg.contains('403') || msg.contains('Yetkisiz') || msg.contains('yetki');
+      if (!mounted) return;
+      setState(() {
+        _canViewTeamTime = false;
+        if (_showTeam) {
+          _showTeam = false;
+          TimeTrackingPrefs.setShowTeam(false);
+        }
+      });
     }
   }
 
@@ -380,6 +417,11 @@ class _TimeTrackingScreenState extends State<TimeTrackingScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final auth = context.watch<AuthState>();
+    if (auth.activeProject != null && _canViewTeamTime == null && _projectMembers.isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _canViewTeamTime == null) _loadProjectMembers();
+      });
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -434,6 +476,7 @@ class _TimeTrackingScreenState extends State<TimeTrackingScreen> {
                                 title: 'Bugün',
                                 hours: _totalToday(),
                                 color: theme.colorScheme.primary,
+                                icon: Icons.today,
                               ),
                             ),
                             const SizedBox(width: 8),
@@ -442,6 +485,7 @@ class _TimeTrackingScreenState extends State<TimeTrackingScreen> {
                                 title: 'Bu hafta',
                                 hours: _totalThisWeek(),
                                 color: theme.colorScheme.secondary,
+                                icon: Icons.date_range,
                               ),
                             ),
                             const SizedBox(width: 8),
@@ -450,12 +494,47 @@ class _TimeTrackingScreenState extends State<TimeTrackingScreen> {
                                 title: 'Bu ay',
                                 hours: _totalThisMonth(),
                                 color: theme.colorScheme.tertiary,
+                                icon: Icons.calendar_month,
                               ),
                             ),
                           ],
                         ),
                         const SizedBox(height: 16),
-                        Text('Gruplama', style: theme.textTheme.titleSmall),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            FilterIconButton(
+                              icon: Icons.view_list_rounded,
+                              selectedIcon: Icons.view_list_rounded,
+                              tooltip: 'Tablo',
+                              selected: _viewMode == _TimeViewMode.table,
+                              onPressed: () {
+                                mediumImpact();
+                                setState(() => _viewMode = _TimeViewMode.table);
+                              },
+                            ),
+                            const SizedBox(width: 8),
+                            FilterIconButton(
+                              icon: Icons.date_range_rounded,
+                              selectedIcon: Icons.date_range_rounded,
+                              tooltip: 'Gantt',
+                              selected: _viewMode == _TimeViewMode.gantt,
+                              onPressed: () {
+                                mediumImpact();
+                                setState(() => _viewMode = _TimeViewMode.gantt);
+                              },
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        if (_viewMode == _TimeViewMode.table) ...[
+                        Row(
+                          children: [
+                            Icon(Icons.view_agenda, size: 20, color: theme.colorScheme.primary),
+                            const SizedBox(width: 8),
+                            Text('Gruplama', style: theme.textTheme.titleSmall),
+                          ],
+                        ),
                         const SizedBox(height: 8),
                         DropdownButtonFormField<TimeTrackingGroupBy>(
                           value: _groupBy,
@@ -481,28 +560,45 @@ class _TimeTrackingScreenState extends State<TimeTrackingScreen> {
                           Row(
                             children: [
                               Expanded(
-                                child: Text(
-                                  'Ekip zamanları',
-                                  style: theme.textTheme.titleSmall,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Ekip zamanları',
+                                      style: theme.textTheme.titleSmall,
+                                    ),
+                                    if (_canViewTeamTime == false)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 2),
+                                        child: Text(
+                                          'Sadece yöneticiler ekip zamanlarını görüntüleyebilir.',
+                                          style: theme.textTheme.bodySmall?.copyWith(
+                                            color: theme.colorScheme.onSurfaceVariant,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
                                 ),
                               ),
                               Switch(
                                 value: _showTeam,
-                                onChanged: (v) async {
-                                  lightImpact();
-                                  setState(() => _showTeam = v);
-                                  TimeTrackingPrefs.setShowTeam(v);
-                                  if (v) {
-                                    await _loadProjectMembers();
-                                    if (mounted) _load();
-                                  } else {
-                                    _load();
-                                  }
-                                },
+                                onChanged: _canViewTeamTime == true
+                                    ? (v) async {
+                                        lightImpact();
+                                        setState(() => _showTeam = v);
+                                        TimeTrackingPrefs.setShowTeam(v);
+                                        if (v) {
+                                          await _loadProjectMembers();
+                                          if (mounted) _load();
+                                        } else {
+                                          _load();
+                                        }
+                                      }
+                                    : null,
                               ),
                             ],
                           ),
-                          if (_showTeam) ...[
+                          if (_showTeam && _canViewTeamTime == true) ...[
                             if (_projectMembers.isEmpty)
                               Padding(
                                 padding: const EdgeInsets.only(top: 8),
@@ -551,6 +647,15 @@ class _TimeTrackingScreenState extends State<TimeTrackingScreen> {
                             onOpenWorkPackage: _openWorkPackageFromTimeEntry,
                           ),
                         ),
+                        ] else ...[
+                        SizedBox(
+                          height: 450,
+                          child: TimeEntriesGantt(
+                            entries: _entries,
+                            onRefresh: _load,
+                          ),
+                        ),
+                        ],
                       ],
                     ),
                   ),
@@ -655,34 +760,48 @@ class _SummaryCard extends StatelessWidget {
   final String title;
   final double hours;
   final Color color;
+  final IconData icon;
 
   const _SummaryCard({
     required this.title,
     required this.hours,
     required this.color,
+    required this.icon,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Card(
+      elevation: 1,
+      color: color.withOpacity(0.12),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              title,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+            Row(
+              children: [
+                Icon(icon, size: 20, color: color),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: color,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 8),
             Text(
               '${hours.toStringAsFixed(1)} s',
-              style: theme.textTheme.titleMedium?.copyWith(
+              style: theme.textTheme.titleLarge?.copyWith(
                 color: color,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w800,
               ),
             ),
           ],

@@ -4,11 +4,10 @@ const _kColumns = 'openproject.time_tracking.columns';
 const _kGroupBy = 'openproject.time_tracking.groupBy';
 const _kShowTeam = 'openproject.time_tracking.showTeam';
 
-/// Varsayılan kolon sırası (görünür).
+/// Varsayılan kolon sırası (görünür). İş başlığı/ID kolon ayarlarından eklenebilir.
 const List<String> kDefaultTimeTrackingColumns = [
   'date',
   'hours',
-  'work_package',
   'comment',
   'activity',
 ];

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../api/openproject_client.dart';
 import '../models/notification_item.dart';
@@ -287,6 +288,71 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
+  /// OpenProject e-posta ile mobil bildirim eşleşmesi hakkında bilgi ve ayar linki.
+  Widget _buildNotificationSettingsInfo(BuildContext context, AuthState auth) {
+    final theme = Theme.of(context);
+    final settingsUrl = auth.instanceDisplayUrl != null
+        ? '${auth.instanceDisplayUrl!.replaceAll(RegExp(r'/+$'), '')}/my/account'
+        : null;
+    return Material(
+      color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.info_outline, size: 20, color: theme.colorScheme.primary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Mobil bildirimler OpenProject\'teki uygulama içi bildirimlere göre gelir. '
+                    'E-posta ile aynı olaylarda mobil bildirim almak için OpenProject\'te '
+                    'Bildirim ayarlarınızda ilgili olayları açmanız yeterli; aynı ayarlar hem e-postayı hem uygulama içi (ve mobil) bildirimleri besler.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (settingsUrl != null && settingsUrl.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              InkWell(
+                onTap: () async {
+                  final uri = Uri.parse(settingsUrl);
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.open_in_new, size: 16, color: theme.colorScheme.primary),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Bildirim ayarlarını OpenProject\'te aç',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.primary,
+                          decoration: TextDecoration.underline,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final items = _visibleItems(context);
@@ -355,11 +421,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     ),
                   ),
                 )
-              : items.isEmpty
-                  ? const Center(child: Text('Gösterilecek bildirim yok.'))
-                  : Column(
+              : Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Expanded(
+                        _buildNotificationSettingsInfo(context, auth),
+                        if (items.isEmpty)
+                          const Expanded(
+                            child: Center(child: Text('Gösterilecek bildirim yok.')),
+                          )
+                        else
+                          Expanded(
                           child: RefreshIndicator(
                             onRefresh: _load,
                             child: ListView.separated(
@@ -481,9 +552,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                         ],
                                       ],
                                     ),
-                                  ),
+                                    ),
                                 ),
-                              );
+                                );
                             },
                           ),
                         ),

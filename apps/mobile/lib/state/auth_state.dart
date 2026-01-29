@@ -10,6 +10,7 @@ import '../api/openproject_client.dart';
 import '../models/project.dart';
 import '../services/local_notification_service.dart';
 import '../services/notification_background_service.dart';
+import 'notification_prefs.dart';
 import '../services/time_tracking_reminder_service.dart';
 
 class AuthState extends ChangeNotifier {
@@ -155,9 +156,12 @@ class AuthState extends ChangeNotifier {
         unreadNotificationCount = count;
         notifyListeners();
       }
-      // Yeni bildirim arttıysa telefon bildirimi göster (ilk yüklemede gösterme).
+      // Yeni bildirim arttıysa telefon bildirimi göster (profil ayarına göre; ilk yüklemede gösterme).
       if (_lastNotifiedUnreadCount >= 0 && count > _lastNotifiedUnreadCount) {
-        LocalNotificationService().showUnreadSummary(count: count);
+        final showMobile = await NotificationPrefs.getMobileNotificationsEnabled();
+        if (showMobile) {
+          LocalNotificationService().showUnreadSummary(count: count);
+        }
       }
       _lastNotifiedUnreadCount = count;
       await _saveLastNotifiedCountToPrefs(count);

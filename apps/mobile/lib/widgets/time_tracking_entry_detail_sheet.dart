@@ -47,16 +47,17 @@ class TimeTrackingEntryDetailSheet extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 20),
-              _DetailRow(
-                label: 'Tarih',
-                value: _formatDate(entry.spentOn),
-              ),
-              _DetailRow(
-                label: 'Saat',
-                value: '${entry.hours.toStringAsFixed(2)} saat',
-              ),
+              _DetailRow(icon: Icons.calendar_today, label: 'Tarih', value: _formatDate(entry.spentOn)),
+              _DetailRow(icon: Icons.schedule, label: 'Saat', value: '${entry.hours.toStringAsFixed(2)} saat'),
+              if ((entry.comment ?? '').isNotEmpty)
+                _DetailRow(
+                  icon: Icons.comment_outlined,
+                  label: 'Yorum',
+                  value: entry.comment!,
+                ),
               if (wpLabel != null)
                 _DetailRow(
+                  icon: Icons.work,
                   label: 'İş',
                   value: wpLabel,
                   valueStyle: theme.textTheme.bodyMedium?.copyWith(
@@ -64,21 +65,14 @@ class TimeTrackingEntryDetailSheet extends StatelessWidget {
                     fontWeight: FontWeight.w500,
                   ),
                 ),
-              if ((entry.comment ?? '').isNotEmpty)
-                _DetailRow(
-                  label: 'Açıklama',
-                  value: entry.comment!,
-                ),
               if ((entry.activityName ?? '').isNotEmpty)
                 _DetailRow(
-                  label: 'Aktivite',
+                  icon: Icons.category_outlined,
+                  label: 'Kategori',
                   value: entry.activityName!,
                 ),
               if ((entry.userName ?? '').isNotEmpty)
-                _DetailRow(
-                  label: 'Kullanıcı',
-                  value: entry.userName!,
-                ),
+                _DetailRow(icon: Icons.person_outline, label: 'Kullanıcı', value: entry.userName!),
               const SizedBox(height: 24),
               if (entry.workPackageId != null && onOpenWorkPackage != null)
                 FilledButton.icon(
@@ -108,11 +102,13 @@ class TimeTrackingEntryDetailSheet extends StatelessWidget {
 }
 
 class _DetailRow extends StatelessWidget {
+  final IconData icon;
   final String label;
   final String value;
   final TextStyle? valueStyle;
 
   const _DetailRow({
+    required this.icon,
     required this.label,
     required this.value,
     this.valueStyle,
@@ -122,22 +118,32 @@ class _DetailRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+          Row(
+            children: [
+              Icon(icon, size: 18, color: theme.colorScheme.primary),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 2),
-          Text(
-            value,
-            style: valueStyle ?? theme.textTheme.bodyLarge,
-            maxLines: 5,
-            overflow: TextOverflow.ellipsis,
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.only(left: 26),
+            child: Text(
+              value,
+              style: valueStyle ?? theme.textTheme.bodyLarge,
+              maxLines: 10,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),

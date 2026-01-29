@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
 
 import '../api/openproject_client.dart';
+import '../state/notification_prefs.dart';
 import 'local_notification_service.dart';
 
 /// Arka planda (uygulama kapalıyken) OpenProject bildirim sayısını kontrol eder.
@@ -46,8 +47,9 @@ void callbackDispatcher() {
 
       final prefs = await SharedPreferences.getInstance();
       final lastNotified = prefs.getInt(kPrefKeyLastNotifiedUnreadCount) ?? -1;
+      final mobileEnabled = await NotificationPrefs.getMobileNotificationsEnabled();
 
-      if (lastNotified >= 0 && count > lastNotified) {
+      if (lastNotified >= 0 && count > lastNotified && mobileEnabled) {
         await LocalNotificationService().initialize();
         await LocalNotificationService().showUnreadSummary(count: count);
       }

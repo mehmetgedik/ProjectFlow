@@ -13,11 +13,13 @@ import '../utils/haptic.dart';
 import '../widgets/letter_avatar.dart';
 import '../widgets/projectflow_logo_button.dart';
 import '../widgets/work_package_list_actions.dart';
+import '../widgets/work_packages_gantt.dart';
 import 'create_work_package_screen.dart';
 import 'work_package_detail_screen.dart';
 
 enum MyWorkFilter { all, today, overdue }
 enum MyWorkSort { dueDateAsc, dueDateDesc }
+enum _ViewMode { list, gantt }
 
 /// Listede kullanılabilecek kolon id'leri (API QueryColumn id ile eşleşir).
 const _kColumnIds = ['id', 'subject', 'type', 'status', 'priority', 'dueDate', 'updated_at'];
@@ -133,6 +135,8 @@ class _MyWorkPackagesScreenState extends State<MyWorkPackagesScreen> {
   /// Hiyerarşik görünümde kapalı düğümler (parent wp.id).
   final Set<String> _collapsedNodes = <String>{};
   bool _sideActionsCollapsed = false;
+  _ViewMode _viewMode = _ViewMode.list;
+  GanttDateSource _ganttDateSource = GanttDateSource.startDue;
 
   @override
   void initState() {
@@ -827,14 +831,19 @@ class _MyWorkPackagesScreenState extends State<MyWorkPackagesScreen> {
 
   Widget _buildNotificationAction(AuthState auth) {
     final count = auth.unreadNotificationCount;
-    final button = IconButton(
-      onPressed: () {
-        Navigator.of(context).pushNamed('/notifications').then((_) {
-          auth.refreshUnreadNotificationCount();
-        });
-      },
-      icon: const Icon(Icons.notifications_outlined, size: 22),
-      tooltip: 'Bildirimler',
+    final button = Tooltip(
+      message: 'Bildirimleri aç',
+      waitDuration: const Duration(milliseconds: 500),
+      showDuration: const Duration(seconds: 2),
+      child: IconButton(
+        onPressed: () {
+          Navigator.of(context).pushNamed('/notifications').then((_) {
+            auth.refreshUnreadNotificationCount();
+          });
+        },
+        icon: const Icon(Icons.notifications_outlined, size: 22),
+        tooltip: 'Bildirimleri aç',
+      ),
     );
     if (count <= 0) return button;
     return Badge(
@@ -1040,31 +1049,43 @@ class _MyWorkPackagesScreenState extends State<MyWorkPackagesScreen> {
           style: Theme.of(context).textTheme.titleMedium,
         ),
         actions: [
-          IconButton(
-            onPressed: () {
-              mediumImpact();
-              Navigator.of(context)
-                  .push(
-                    MaterialPageRoute(
-                      builder: (_) => const CreateWorkPackageScreen(),
-                    ),
-                  )
-                  .then((_) => _load());
-            },
-            icon: const Icon(Icons.add_rounded, size: 24),
-            tooltip: 'Yeni iş paketi',
+          Tooltip(
+            message: 'Yeni iş paketi oluştur',
+            waitDuration: const Duration(milliseconds: 500),
+            showDuration: const Duration(seconds: 2),
+            child: IconButton(
+              onPressed: () {
+                mediumImpact();
+                Navigator.of(context)
+                    .push(
+                      MaterialPageRoute(
+                        builder: (_) => const CreateWorkPackageScreen(),
+                      ),
+                    )
+                    .then((_) => _load());
+              },
+              icon: const Icon(Icons.add_rounded, size: 24),
+              tooltip: 'Yeni iş paketi oluştur',
+            ),
           ),
-          IconButton(
-            onPressed: _load,
-            icon: const Icon(Icons.refresh_rounded, size: 22),
-            tooltip: 'Yenile',
+          Tooltip(
+            message: 'Listeyi yenile',
+            waitDuration: const Duration(milliseconds: 500),
+            showDuration: const Duration(seconds: 2),
+            child: IconButton(
+              onPressed: _load,
+              icon: const Icon(Icons.refresh_rounded, size: 22),
+              tooltip: 'Listeyi yenile',
+            ),
           ),
           const ProjectFlowLogoButton(),
           _buildNotificationAction(auth),
         ],
       ),
       floatingActionButton: Tooltip(
-        message: 'Yenile',
+        message: 'Listeyi yenile',
+        waitDuration: const Duration(milliseconds: 500),
+        showDuration: const Duration(seconds: 2),
         child: FloatingActionButton.small(
           onPressed: () {
             mediumImpact();
@@ -1120,7 +1141,7 @@ class _MyWorkPackagesScreenState extends State<MyWorkPackagesScreen> {
                                 FilterIconButton(
                                   icon: Icons.filter_list_rounded,
                                   selectedIcon: Icons.filter_list_rounded,
-                                  tooltip: 'Tümü',
+                                  tooltip: 'Tüm açık işlerimi göster',
                                   selected: _filter == MyWorkFilter.all,
                                   onPressed: () => _changeFilter(MyWorkFilter.all),
                                 ),
@@ -1128,7 +1149,7 @@ class _MyWorkPackagesScreenState extends State<MyWorkPackagesScreen> {
                                 FilterIconButton(
                                   icon: Icons.today_outlined,
                                   selectedIcon: Icons.today_rounded,
-                                  tooltip: 'Bugün bitiş',
+                                  tooltip: 'Bugün bitiş tarihli işler',
                                   selected: _filter == MyWorkFilter.today,
                                   onPressed: () => _changeFilter(MyWorkFilter.today),
                                 ),
@@ -1136,7 +1157,7 @@ class _MyWorkPackagesScreenState extends State<MyWorkPackagesScreen> {
                                 FilterIconButton(
                                   icon: Icons.event_busy_outlined,
                                   selectedIcon: Icons.event_busy_rounded,
-                                  tooltip: 'Gecikmiş',
+                                  tooltip: 'Gecikmiş (bitiş tarihi geçmiş) işler',
                                   selected: _filter == MyWorkFilter.overdue,
                                   onPressed: () => _changeFilter(MyWorkFilter.overdue),
                                 ),
@@ -1144,12 +1165,94 @@ class _MyWorkPackagesScreenState extends State<MyWorkPackagesScreen> {
                                 FilterIconButton(
                                   icon: Icons.filter_alt_outlined,
                                   selectedIcon: Icons.filter_alt_rounded,
-                                  tooltip: 'Yalnızca bu proje',
+                                  tooltip: 'Yalnızca aktif projedeki işleri göster',
                                   selected: _onlyActiveProject,
                                   onPressed: () {
                                     setState(() => _onlyActiveProject = !_onlyActiveProject);
                                     _load();
                                     _loadQueries();
+                                  },
+                                ),
+                                const SizedBox(width: 8),
+                                FilterIconButton(
+                                  icon: Icons.view_list_rounded,
+                                  selectedIcon: Icons.view_list_rounded,
+                                  tooltip: 'Liste görünümü',
+                                  selected: _viewMode == _ViewMode.list,
+                                  onPressed: () {
+                                    mediumImpact();
+                                    setState(() => _viewMode = _ViewMode.list);
+                                  },
+                                ),
+                                const SizedBox(width: 4),
+                                FilterIconButton(
+                                  icon: Icons.date_range_rounded,
+                                  selectedIcon: Icons.date_range_rounded,
+                                  tooltip: 'Gantt (zaman çizelgesi) görünümü',
+                                  selected: _viewMode == _ViewMode.gantt,
+                                  onPressed: () {
+                                    mediumImpact();
+                                    setState(() => _viewMode = _ViewMode.gantt);
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        if (_selectedQuery != null)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                FilterIconButton(
+                                  icon: Icons.view_list_rounded,
+                                  selectedIcon: Icons.view_list_rounded,
+                                  tooltip: 'Liste görünümü',
+                                  selected: _viewMode == _ViewMode.list,
+                                  onPressed: () {
+                                    mediumImpact();
+                                    setState(() => _viewMode = _ViewMode.list);
+                                  },
+                                ),
+                                const SizedBox(width: 4),
+                                FilterIconButton(
+                                  icon: Icons.date_range_rounded,
+                                  selectedIcon: Icons.date_range_rounded,
+                                  tooltip: 'Gantt (zaman çizelgesi) görünümü',
+                                  selected: _viewMode == _ViewMode.gantt,
+                                  onPressed: () {
+                                    mediumImpact();
+                                    setState(() => _viewMode = _ViewMode.gantt);
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        if (_viewMode == _ViewMode.gantt)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                FilterIconButton(
+                                  icon: Icons.event_rounded,
+                                  selectedIcon: Icons.event_rounded,
+                                  tooltip: 'Gantt\'ta başlangıç–bitiş tarihine göre çiz',
+                                  selected: _ganttDateSource == GanttDateSource.startDue,
+                                  onPressed: () {
+                                    mediumImpact();
+                                    setState(() => _ganttDateSource = GanttDateSource.startDue);
+                                  },
+                                ),
+                                const SizedBox(width: 4),
+                                FilterIconButton(
+                                  icon: Icons.update_rounded,
+                                  selectedIcon: Icons.update_rounded,
+                                  tooltip: 'Gantt\'ta güncelleme tarihine göre çiz',
+                                  selected: _ganttDateSource == GanttDateSource.updatedAt,
+                                  onPressed: () {
+                                    mediumImpact();
+                                    setState(() => _ganttDateSource = GanttDateSource.updatedAt);
                                   },
                                 ),
                               ],
@@ -1167,15 +1270,21 @@ class _MyWorkPackagesScreenState extends State<MyWorkPackagesScreen> {
                           ),
                         const Divider(height: 1),
                         Expanded(
-                          child: RefreshIndicator(
-                            onRefresh: _load,
-                            child: ListView.separated(
-                              physics: const AlwaysScrollableScrollPhysics(),
-                              itemCount: _selectedQuery != null
-                                  ? _buildQueryRows().length + (_showLoadMoreQuery ? 1 : 0)
-                                  : items.length + (_showLoadMore ? 1 : 0),
-                              separatorBuilder: (_, __) => const Divider(height: 1),
-                              itemBuilder: (context, index) {
+                          child: _viewMode == _ViewMode.gantt
+                              ? WorkPackagesGantt(
+                                  items: _visibleItems,
+                                  dateSource: _ganttDateSource,
+                                  onRefresh: _load,
+                                )
+                              : RefreshIndicator(
+                                  onRefresh: _load,
+                                  child: ListView.separated(
+                                    physics: const AlwaysScrollableScrollPhysics(),
+                                    itemCount: _selectedQuery != null
+                                        ? _buildQueryRows().length + (_showLoadMoreQuery ? 1 : 0)
+                                        : items.length + (_showLoadMore ? 1 : 0),
+                                    separatorBuilder: (_, __) => const Divider(height: 1),
+                                    itemBuilder: (context, index) {
                                 if (_selectedQuery == null && _showLoadMore && index == items.length) {
                                   return ListTile(
                                     title: Center(
@@ -1214,7 +1323,7 @@ class _MyWorkPackagesScreenState extends State<MyWorkPackagesScreen> {
                                             : IconButton(
                                                 onPressed: _loadMoreQuery,
                                                 icon: const Icon(Icons.add_circle_outline_rounded, size: 32),
-                                                tooltip: 'Daha fazla yükle',
+                                                tooltip: 'Sonraki sayfayı yükle (daha fazla iş göster)',
                                               ),
                                       ),
                                     );
@@ -1373,7 +1482,7 @@ class _MyWorkPackagesScreenState extends State<MyWorkPackagesScreen> {
                                         EdgeInsets.only(left: 16 + indent, right: 16, top: 4, bottom: 4),
                                     trailing: row.hasChildren
                                         ? IconButton(
-                                            tooltip: _collapsedNodes.contains(wp.id) ? 'Genişlet' : 'Daralt',
+                                            tooltip: _collapsedNodes.contains(wp.id) ? 'Alt işleri göster (genişlet)' : 'Alt işleri gizle (daralt)',
                                             icon: Icon(
                                               _collapsedNodes.contains(wp.id)
                                                   ? Icons.chevron_right_rounded

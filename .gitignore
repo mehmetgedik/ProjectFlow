@@ -1,9 +1,23 @@
-# Kök seviye – hassas ve gereksiz dosyalar
+# Kök seviye – hassas ve gereksiz dosyalar (ASLA COMMIT ETMEYIN)
 apps/mobile/android/key.properties
 apps/mobile/keystores/
 **/local.properties
 **/*.jks
 **/*.keystore
+**/.env
+**/.env.*
+**/credentials.json
+**/*-credentials.json
+**/*.pem
+
+# IDE/geçici – repoya eklenmemeli (Cursor/VS Code run artifact)
+apps/mobile/Get
+apps/mobile/Process
+apps/mobile/Run
+apps/mobile/flutter
+
+# İsteğe bağlı: makineye özel emülatör scripti (path/AVD adı kişisel)
+# start-emulator.vbs
 
 # Flutter / build
 apps/mobile/.dart_tool/

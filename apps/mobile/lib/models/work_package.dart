@@ -3,6 +3,7 @@ class WorkPackage {
   final String subject;
   final String statusName;
   final String? assigneeName;
+  final DateTime? startDate;
   final DateTime? dueDate;
   final String? description;
   final String? priorityName;
@@ -22,6 +23,7 @@ class WorkPackage {
     required this.subject,
     required this.statusName,
     this.assigneeName,
+    this.startDate,
     this.dueDate,
     this.description,
     this.priorityName,
@@ -54,6 +56,7 @@ class WorkPackage {
     final project = links['project'] as Map<String, dynamic>?;
     final parent = links['parent'] as Map<String, dynamic>?;
     final version = links['version'] as Map<String, dynamic>?;
+    final start = json['startDate'] as String?;
     final due = json['dueDate'] as String?;
     final updated = json['updatedAt'] as String?;
     final desc = json['description'] as Map<String, dynamic>?;
@@ -64,6 +67,7 @@ class WorkPackage {
       subject: (json['subject'] ?? '').toString(),
       statusName: (status?['title'] ?? '').toString(),
       assigneeName: assignee?['title']?.toString(),
+      startDate: start != null && start.isNotEmpty ? DateTime.tryParse(start) : null,
       dueDate: due != null && due.isNotEmpty ? DateTime.tryParse(due) : null,
       description: rawDesc != null && rawDesc.isNotEmpty ? rawDesc : null,
       priorityName: priority?['title']?.toString(),

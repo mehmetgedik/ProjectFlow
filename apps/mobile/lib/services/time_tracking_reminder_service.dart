@@ -21,8 +21,8 @@ class TimeTrackingReminderService {
     try {
       final weekDays = await client.getWeekDays();
       if (weekDays.isNotEmpty) {
-        workingWeekdays = weekDays.where((d) => d.working).map((d) => d.day).toList(growable: false);
-        if (workingWeekdays.isEmpty) return;
+        final fromApi = weekDays.where((d) => d.working).map((d) => d.day).toList(growable: false);
+        if (fromApi.isNotEmpty) workingWeekdays = fromApi;
       }
     } catch (_) {
       // API hatası; varsayılan çalışma günleri kullanılır

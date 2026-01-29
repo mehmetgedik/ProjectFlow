@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// App içinde "ana ekrana dön" kısayolu: ProjectFlow logosuna tıklayınca
-/// ilk route'a döner (RootRouter -> ProjectsScreen).
+/// ilk route'a döner (RootRouter -> AuthenticatedGateScreen / Dashboard).
 /// Şeffaf ikon (app_icon_transpara.png) kullanır.
 class ProjectFlowLogoButton extends StatelessWidget {
   const ProjectFlowLogoButton({super.key, this.size = 28});
@@ -15,7 +15,9 @@ class ProjectFlowLogoButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Tooltip(
-      message: 'Ana ekran',
+      message: 'Ana ekrana (dashboard) dön',
+      waitDuration: const Duration(milliseconds: 500),
+      showDuration: const Duration(seconds: 2),
       child: Material(
         type: MaterialType.transparency,
         child: InkWell(

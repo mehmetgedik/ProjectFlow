@@ -157,6 +157,18 @@ class OpenProjectClient {
     await patchJson('/users/me', body);
   }
 
+  /// Kullanıcı tercihleri: saat dilimi, bildirim ayarları (OpenProject API my_preferences).
+  Future<Map<String, dynamic>> getMyPreferences() async {
+    final data = await getJson('/my_preferences') as Map<String, dynamic>;
+    return data;
+  }
+
+  /// Kullanıcı tercihlerini günceller. Sadece değiştirilecek alanları gönderin (timeZone, notifications, vb.).
+  Future<void> patchMyPreferences(Map<String, dynamic> body) async {
+    if (body.isEmpty) return;
+    await patchJson('/my_preferences', body);
+  }
+
   /// Work schedule: haftanın hangi günleri çalışma günü (1 = Pazartesi, 7 = Pazar).
   /// API 404/403 dönerse boş liste veya varsayılan (Pzt–Cuma) kullanılabilir.
   Future<List<WeekDay>> getWeekDays() async {
@@ -203,23 +215,52 @@ class OpenProjectClient {
     return WorkPackage.fromJson(data);
   }
 
-  /// Yeni iş paketi oluşturur. projectId ve typeId zorunlu.
+  /// Yeni iş paketi oluşturur. projectId ve typeId zorunlu. Web formundaki tüm alanlar desteklenir.
   Future<WorkPackage> createWorkPackage({
     required String projectId,
     required String typeId,
     required String subject,
     String? description,
+    String? assigneeId,
+    String? priorityId,
+    String? statusId,
+    String? parentId,
+    String? versionId,
+    DateTime? startDate,
+    DateTime? dueDate,
   }) async {
     if (subject.trim().isEmpty) throw Exception('Başlık zorunludur.');
+    final links = <String, dynamic>{
+      'project': {'href': '/api/v3/projects/$projectId'},
+      'type': {'href': '/api/v3/types/$typeId'},
+    };
+    if (statusId != null && statusId.isNotEmpty) {
+      links['status'] = {'href': '/api/v3/statuses/$statusId'};
+    }
+    if (assigneeId != null && assigneeId.isNotEmpty) {
+      links['assignee'] = {'href': '/api/v3/users/$assigneeId'};
+    }
+    if (priorityId != null && priorityId.isNotEmpty) {
+      links['priority'] = {'href': '/api/v3/priorities/$priorityId'};
+    }
+    if (parentId != null && parentId.isNotEmpty) {
+      links['parent'] = {'href': '/api/v3/work_packages/$parentId'};
+    }
+    if (versionId != null && versionId.isNotEmpty) {
+      links['version'] = {'href': '/api/v3/versions/$versionId'};
+    }
     final body = <String, dynamic>{
       'subject': subject.trim(),
-      '_links': <String, dynamic>{
-        'project': {'href': '/api/v3/projects/$projectId'},
-        'type': {'href': '/api/v3/types/$typeId'},
-      },
+      '_links': links,
     };
     if (description != null && description.trim().isNotEmpty) {
       body['description'] = {'raw': description.trim()};
+    }
+    if (startDate != null) {
+      body['startDate'] = startDate.toIso8601String().split('T').first;
+    }
+    if (dueDate != null) {
+      body['dueDate'] = dueDate.toIso8601String().split('T').first;
     }
     final data = await postJson('/work_packages', body);
     return WorkPackage.fromJson(data);
@@ -246,6 +287,23 @@ class OpenProjectClient {
   /// Tüm durumları getirir (iş paketi güncellemede seçim için). P0-F04.
   Future<List<Map<String, String>>> getStatuses() async {
     final data = await getJson('/statuses');
+    final embedded = data['_embedded'] as Map<String, dynamic>?;
+    final elements = (embedded?['elements'] as List?) ?? const [];
+    final result = <Map<String, String>>[];
+    for (final e in elements) {
+      if (e is! Map<String, dynamic>) continue;
+      final id = e['id']?.toString();
+      final name = e['name']?.toString();
+      if (id != null && id.isNotEmpty) {
+        result.add({'id': id, 'name': name ?? id});
+      }
+    }
+    return result;
+  }
+
+  /// Tüm öncelikleri getirir (iş paketi oluşturma/güncellemede seçim için).
+  Future<List<Map<String, String>>> getPriorities() async {
+    final data = await getJson('/priorities');
     final embedded = data['_embedded'] as Map<String, dynamic>?;
     final elements = (embedded?['elements'] as List?) ?? const [];
     final result = <Map<String, String>>[];

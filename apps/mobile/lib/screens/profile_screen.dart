@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../api/openproject_client.dart';
+import '../models/project.dart';
 import '../state/auth_state.dart';
 import '../state/theme_state.dart';
+import '../state/notification_prefs.dart';
 import '../state/time_tracking_reminder_prefs.dart';
+import '../services/local_notification_service.dart';
 import '../services/time_tracking_reminder_service.dart';
 import '../utils/error_messages.dart';
 import '../utils/haptic.dart';
@@ -23,8 +26,11 @@ Map<String, String>? _avatarHeaders(AuthState auth) {
 }
 
 /// P1-F01: Profil/hesap görünümü – ad, kullanıcı adı, instance; avatar; yetki varsa düzenleme.
+/// [requireProjectSelection] true ise varsayılan proje seçimi zorunludur (ilk giriş / kayıt yok).
 class ProfileScreen extends StatelessWidget {
-  const ProfileScreen({super.key});
+  const ProfileScreen({super.key, this.requireProjectSelection = false});
+
+  final bool requireProjectSelection;
 
   Future<void> _editDisplayName(BuildContext context, AuthState auth) async {
     final client = auth.client;
@@ -184,6 +190,10 @@ class ProfileScreen extends StatelessWidget {
             label: 'Instance',
             value: instance,
           ),
+          if (auth.client != null) ...[
+            const SizedBox(height: 24),
+            _DefaultProjectCard(requireSelection: requireProjectSelection),
+          ],
           const SizedBox(height: 24),
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
@@ -244,6 +254,10 @@ class ProfileScreen extends StatelessWidget {
           ),
           if (auth.client != null) ...[
             const SizedBox(height: 24),
+            _NotificationSettingsCard(auth: auth),
+            const SizedBox(height: 24),
+            _UserPreferencesCard(auth: auth),
+            const SizedBox(height: 24),
             _TimeTrackingReminderCard(auth: auth),
           ],
           const SizedBox(height: 32),
@@ -260,6 +274,468 @@ class ProfileScreen extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Bildirim ayarları: telefon bildirimi aç/kapa.
+class _NotificationSettingsCard extends StatefulWidget {
+  final AuthState auth;
+
+  const _NotificationSettingsCard({required this.auth});
+
+  @override
+  State<_NotificationSettingsCard> createState() => _NotificationSettingsCardState();
+}
+
+class _NotificationSettingsCardState extends State<_NotificationSettingsCard> {
+  bool? _mobileNotificationsEnabled;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPrefs();
+  }
+
+  Future<void> _loadPrefs() async {
+    final enabled = await NotificationPrefs.getMobileNotificationsEnabled();
+    if (mounted) setState(() => _mobileNotificationsEnabled = enabled);
+  }
+
+  Future<void> _onMobileNotificationsChanged(bool value) async {
+    await NotificationPrefs.setMobileNotificationsEnabled(value);
+    setState(() => _mobileNotificationsEnabled = value);
+    selectionClick();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_mobileNotificationsEnabled == null) {
+      return const Card(
+        child: ListTile(
+          title: Text('Bildirim ayarları'),
+          trailing: SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+
+    return Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Text(
+              'Bildirim ayarları',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+            ),
+          ),
+          SwitchListTile(
+            title: const Text('Yeni bildirimde telefon bildirimi'),
+            subtitle: const Text(
+              'OpenProject\'te yeni bildirim oluştuğunda cihazda bildirim göster',
+            ),
+            value: _mobileNotificationsEnabled!,
+            onChanged: _onMobileNotificationsChanged,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// OpenProject hesap tercihleri: saat dilimi ve bildirim ayarları (API: my_preferences).
+class _UserPreferencesCard extends StatefulWidget {
+  final AuthState auth;
+
+  const _UserPreferencesCard({required this.auth});
+
+  @override
+  State<_UserPreferencesCard> createState() => _UserPreferencesCardState();
+}
+
+class _UserPreferencesCardState extends State<_UserPreferencesCard> {
+  bool _loading = true;
+  String? _error;
+  String? _timeZone;
+  Map<String, bool> _notifications = const {};
+
+  static const List<MapEntry<String, String>> _timeZoneList = [
+    MapEntry('UTC', 'UTC'),
+    MapEntry('Europe/Istanbul', 'İstanbul'),
+    MapEntry('Europe/Berlin', 'Berlin'),
+    MapEntry('Europe/London', 'Londra'),
+    MapEntry('Europe/Paris', 'Paris'),
+    MapEntry('Europe/Moscow', 'Moskova'),
+    MapEntry('Europe/Amsterdam', 'Amsterdam'),
+    MapEntry('Europe/Rome', 'Roma'),
+    MapEntry('Europe/Athens', 'Atina'),
+    MapEntry('America/New_York', 'New York'),
+    MapEntry('America/Chicago', 'Chicago'),
+    MapEntry('America/Denver', 'Denver'),
+    MapEntry('America/Los_Angeles', 'Los Angeles'),
+    MapEntry('Asia/Dubai', 'Dubai'),
+    MapEntry('Asia/Singapore', 'Singapur'),
+    MapEntry('Asia/Tokyo', 'Tokyo'),
+    MapEntry('Australia/Sydney', 'Sidney'),
+  ];
+
+  static const Map<String, String> _notificationLabels = {
+    'watched': 'İzlediğim öğeler',
+    'involved': 'Atandığım / dahil olduğum',
+    'mentioned': 'Beni andılar',
+    'shared': 'Paylaşılan',
+    'newsAdded': 'Haber eklendi',
+    'newsCommented': 'Haber yorumu',
+    'documentAdded': 'Belge eklendi',
+    'forumMessages': 'Forum iletileri',
+    'wikiPageAdded': 'Wiki sayfası eklendi',
+    'wikiPageUpdated': 'Wiki sayfası güncellendi',
+    'membershipAdded': 'Üyelik eklendi',
+    'membershipUpdated': 'Üyelik güncellendi',
+    'workPackageCommented': 'İş paketi yorumu',
+    'workPackageProcessed': 'İş paketi işlendi',
+    'workPackagePrioritized': 'İş paketi önceliklendi',
+    'workPackageScheduled': 'İş paketi planlandı',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final client = widget.auth.client;
+    if (client == null) {
+      setState(() => _loading = false);
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final data = await client.getMyPreferences();
+      if (!mounted) return;
+      final tz = data['timeZone']?.toString();
+      final notifRaw = data['notifications'];
+      Map<String, bool> notif = {};
+      if (notifRaw is Map) {
+        for (final e in notifRaw.entries) {
+          if (e.key is! String) continue;
+          final k = e.key as String;
+          bool v = false;
+          if (e.value == true) {
+            v = true;
+          } else if (e.value == false) {
+            v = false;
+          } else if (e.value is String) {
+            v = (e.value as String).toLowerCase() == 'true';
+          }
+          notif[k] = v;
+        }
+      }
+      setState(() {
+        _timeZone = tz;
+        _notifications = notif;
+        _loading = false;
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = ErrorMessages.userFriendly(e);
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _setTimeZone(String? value) async {
+    if (value == null || value == _timeZone) return;
+    final client = widget.auth.client;
+    if (client == null) return;
+    selectionClick();
+    try {
+      await client.patchMyPreferences({'timeZone': value});
+      if (mounted) setState(() => _timeZone = value);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Saat dilimi güncellendi.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(ErrorMessages.userFriendly(e))),
+        );
+      }
+    }
+  }
+
+  Future<void> _setNotification(String key, bool value) async {
+    final client = widget.auth.client;
+    if (client == null) return;
+    selectionClick();
+    final next = Map<String, bool>.from(_notifications)..[key] = value;
+    try {
+      await client.patchMyPreferences({'notifications': next});
+      if (mounted) setState(() => _notifications = next);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(ErrorMessages.userFriendly(e))),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Card(
+        child: ListTile(
+          title: Text('Hesap tercihleri (OpenProject)'),
+          trailing: SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+    if (_error != null) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Hesap tercihleri (OpenProject)', style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 8),
+              Text(_error!),
+              const SizedBox(height: 8),
+              TextButton(onPressed: _load, child: const Text('Tekrar dene')),
+            ],
+          ),
+        ),
+      );
+    }
+
+    String currentTzLabel = 'Seçin';
+    if (_timeZone != null) {
+      final match = _timeZoneList.where((e) => e.key == _timeZone);
+      currentTzLabel = match.isEmpty ? _timeZone! : match.first.value;
+    }
+
+    return Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Text(
+              'Hesap tercihleri (OpenProject)',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+            ),
+          ),
+          ListTile(
+            title: const Text('Saat dilimi'),
+            subtitle: Text(currentTzLabel),
+            trailing: const Icon(Icons.schedule, size: 20),
+            onTap: () async {
+              final chosen = await showDialog<String>(
+                context: context,
+                builder: (ctx) => SimpleDialog(
+                  title: const Text('Saat dilimi'),
+                  children: [
+                    for (final e in _timeZoneList)
+                      SimpleDialogOption(
+                        onPressed: () => Navigator.pop(ctx, e.key),
+                        child: Text(e.value),
+                      ),
+                    if (_timeZone != null &&
+                        !_timeZoneList.any((e) => e.key == _timeZone))
+                      SimpleDialogOption(
+                        onPressed: () => Navigator.pop(ctx, _timeZone),
+                        child: Text(_timeZone!),
+                      ),
+                  ],
+                ),
+              );
+              if (chosen != null) await _setTimeZone(chosen);
+            },
+          ),
+          const Divider(height: 1),
+          ExpansionTile(
+            title: const Text('Bildirim tercihleri'),
+            subtitle: const Text('Hangi olaylarda bildirim alacağınızı seçin'),
+            children: [
+              for (final e in _notificationLabels.entries)
+                SwitchListTile(
+                  title: Text(e.value, style: Theme.of(context).textTheme.bodyMedium),
+                  value: _notifications[e.key] ?? false,
+                  onChanged: (v) => _setNotification(e.key, v),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Varsayılan proje listesi; seçim kayıt altına alınır (AuthState + secure storage).
+class _DefaultProjectCard extends StatefulWidget {
+  const _DefaultProjectCard({required this.requireSelection});
+
+  final bool requireSelection;
+
+  @override
+  State<_DefaultProjectCard> createState() => _DefaultProjectCardState();
+}
+
+class _DefaultProjectCardState extends State<_DefaultProjectCard> {
+  bool _loading = true;
+  String? _error;
+  List<Project> _projects = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final auth = context.read<AuthState>();
+    final client = auth.client;
+    if (client == null) {
+      setState(() => _loading = false);
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final list = await client.getProjects();
+      if (mounted) setState(() {
+        _projects = list;
+        _loading = false;
+      });
+    } catch (e) {
+      if (mounted) setState(() {
+        _error = ErrorMessages.userFriendly(e);
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = context.watch<AuthState>();
+    final selectedId = auth.activeProject?.id;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+            'Varsayılan proje',
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.outline,
+                ),
+          ),
+        ),
+        if (widget.requireSelection && selectedId == null && !_loading && _error == null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              'Zorunlu: Aşağıdan bir proje seçin.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+            ),
+          ),
+        if (_loading)
+          const Card(
+            child: ListTile(
+              title: Text('Projeler yükleniyor…'),
+              trailing: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          )
+        else if (_error != null)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(_error!),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: _load,
+                    child: const Text('Tekrar dene'),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else
+          Card(
+            child: Column(
+              children: [
+                ...List.generate(_projects.length, (i) {
+                  final p = _projects[i];
+                  final selected = p.id == selectedId;
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (i > 0) const Divider(height: 1),
+                      ListTile(
+                        title: Text(
+                          p.name,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                fontWeight: selected ? FontWeight.w600 : null,
+                              ),
+                        ),
+                        subtitle: Text(
+                          p.identifier,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        trailing: selected
+                            ? Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary)
+                            : null,
+                        onTap: () {
+                          selectionClick();
+                          auth.setActiveProject(p);
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Varsayılan proje kaydedildi.')),
+                            );
+                          }
+                        },
+                      ),
+                    ],
+                  );
+                }),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }
@@ -391,6 +867,35 @@ class _TimeTrackingReminderCardState extends State<_TimeTrackingReminderCard> {
             ),
             trailing: Text(endTimeStr),
             onTap: _enabled! ? _pickEndTime : null,
+          ),
+          const Divider(height: 1),
+          ListTile(
+            title: const Text('Test bildirimi'),
+            subtitle: const Text('Şimdi göster veya 1 dakika sonra planla; hatırlatma kanalını doğrulayın'),
+            trailing: const Icon(Icons.notifications_active_outlined),
+            onTap: () async {
+              selectionClick();
+              await LocalNotificationService().showTestNotificationNow();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Test bildirimi gösterildi. Gelmediyse bildirim izinlerini kontrol edin.')),
+                );
+              }
+            },
+          ),
+          ListTile(
+            title: const Text('1 dakika sonra test bildirimi planla'),
+            subtitle: const Text('Zamanlanmış bildirimin çalışıp çalışmadığını test edin'),
+            trailing: const Icon(Icons.schedule),
+            onTap: () async {
+              selectionClick();
+              await LocalNotificationService().scheduleTestReminderInOneMinute();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('1 dakika sonra test bildirimi planlandı. Uygulamayı kapatıp bekleyebilirsiniz.')),
+                );
+              }
+            },
           ),
         ],
       ),

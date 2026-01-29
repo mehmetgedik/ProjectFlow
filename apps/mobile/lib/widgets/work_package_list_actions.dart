@@ -30,6 +30,8 @@ class FilterIconButton extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         child: Tooltip(
           message: tooltip,
+          waitDuration: const Duration(milliseconds: 500),
+          showDuration: const Duration(seconds: 2),
           child: Padding(
             padding: const EdgeInsets.all(10),
             child: Icon(
@@ -86,6 +88,8 @@ class StickySideActions extends StatelessWidget {
       final fg = highlight ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant;
       return Tooltip(
         message: tooltip,
+        waitDuration: const Duration(milliseconds: 500),
+        showDuration: const Duration(seconds: 2),
         child: Material(
           color: Colors.transparent,
           child: InkWell(
@@ -109,9 +113,9 @@ class StickySideActions extends StatelessWidget {
             borderRadius: BorderRadius.circular(18),
             side: BorderSide(color: border),
           ),
-          child: iconAction(
+          child:           iconAction(
             icon: Icons.chevron_left_rounded,
-            tooltip: 'Menüyü aç',
+            tooltip: 'Görünüm, sırala, filtre menüsünü aç',
             onPressed: onToggleCollapsed,
           ),
         ),
@@ -131,35 +135,35 @@ class StickySideActions extends StatelessWidget {
           children: [
             iconAction(
               icon: Icons.chevron_right_rounded,
-              tooltip: 'Menüyü gizle',
+              tooltip: 'Görünüm menüsünü gizle',
               onPressed: onToggleCollapsed,
             ),
             const Divider(height: 1),
             iconAction(
               icon: Icons.view_module_rounded,
-              tooltip: 'Görünüm seç',
+              tooltip: 'Kayıtlı görünüm (sorgu) seç',
               onPressed: () => onOpenViews(),
             ),
             if (showSort)
               iconAction(
                 icon: Icons.sort_rounded,
-                tooltip: 'Sırala',
+                tooltip: 'Sıralama seçenekleri',
                 onPressed: () => onOpenSort(),
               ),
             iconAction(
               icon: hasFilters ? Icons.filter_alt_rounded : Icons.tune_rounded,
-              tooltip: 'Filtreler',
+              tooltip: hasFilters ? 'Filtreler (aktif)' : 'Filtre ekle veya düzenle',
               highlight: hasFilters,
               onPressed: () => onOpenFilters(),
             ),
             iconAction(
               icon: Icons.view_agenda_rounded,
-              tooltip: 'Kolonlar',
+              tooltip: 'Liste kolonlarını seç',
               onPressed: () => onOpenColumns(),
             ),
             iconAction(
               icon: Icons.refresh_rounded,
-              tooltip: 'Yenile',
+              tooltip: 'Listeyi yenile',
               onPressed: () => onRefresh(),
             ),
           ],
