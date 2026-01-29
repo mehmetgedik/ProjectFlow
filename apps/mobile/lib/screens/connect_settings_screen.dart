@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 
 import '../state/auth_state.dart';
+import '../utils/error_messages.dart';
 import '../utils/haptic.dart';
 
 /// Tam ekran bağlantı ayarları sayfası.
@@ -66,7 +67,7 @@ class _ConnectSettingsScreenState extends State<ConnectSettingsScreen> {
         Navigator.of(context).pop();
       }
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      if (mounted) setState(() => _error = ErrorMessages.userFriendly(e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }

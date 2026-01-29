@@ -4,6 +4,9 @@ import 'package:provider/provider.dart';
 import '../api/openproject_client.dart';
 import '../state/auth_state.dart';
 import '../state/theme_state.dart';
+import '../state/time_tracking_reminder_prefs.dart';
+import '../services/time_tracking_reminder_service.dart';
+import '../utils/error_messages.dart';
 import '../utils/haptic.dart';
 import '../widgets/letter_avatar.dart';
 import '../widgets/projectflow_logo_button.dart';
@@ -94,10 +97,9 @@ class ProfileScreen extends StatelessWidget {
       }
     } catch (e) {
       if (context.mounted) {
-        final msg = e.toString().contains('403') || e.toString().contains('Yetkisiz')
-            ? 'Profil güncelleme yetkiniz yok.'
-            : 'Güncellenemedi: $e';
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(ErrorMessages.userFriendly(e))),
+        );
       }
     }
   }
@@ -173,6 +175,11 @@ class ProfileScreen extends StatelessWidget {
               label: 'Kullanıcı adı (login)',
               value: login,
             ),
+          if (auth.userEmail != null && auth.userEmail!.isNotEmpty)
+            _ProfileRow(
+              label: 'E-posta',
+              value: auth.userEmail!,
+            ),
           _ProfileRow(
             label: 'Instance',
             value: instance,
@@ -235,6 +242,10 @@ class ProfileScreen extends StatelessWidget {
               );
             },
           ),
+          if (auth.client != null) ...[
+            const SizedBox(height: 24),
+            _TimeTrackingReminderCard(auth: auth),
+          ],
           const SizedBox(height: 32),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -276,6 +287,110 @@ class _ProfileRow extends StatelessWidget {
           Text(
             value,
             style: Theme.of(context).textTheme.bodyLarge,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Zaman takibi hatırlatması: aç/kapa ve mesai bitiş saati (P1-F03).
+class _TimeTrackingReminderCard extends StatefulWidget {
+  final AuthState auth;
+
+  const _TimeTrackingReminderCard({required this.auth});
+
+  @override
+  State<_TimeTrackingReminderCard> createState() => _TimeTrackingReminderCardState();
+}
+
+class _TimeTrackingReminderCardState extends State<_TimeTrackingReminderCard> {
+  bool? _enabled;
+  int? _endHour;
+  int? _endMinute;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPrefs();
+  }
+
+  Future<void> _loadPrefs() async {
+    final enabled = await TimeTrackingReminderPrefs.getEnabled();
+    final endHour = await TimeTrackingReminderPrefs.getEndHour();
+    final endMinute = await TimeTrackingReminderPrefs.getEndMinute();
+    if (mounted) {
+      setState(() {
+        _enabled = enabled;
+        _endHour = endHour;
+        _endMinute = endMinute;
+      });
+    }
+  }
+
+  Future<void> _onEnabledChanged(bool value) async {
+    await TimeTrackingReminderPrefs.setEnabled(value);
+    setState(() => _enabled = value);
+    selectionClick();
+    await TimeTrackingReminderService().scheduleFromPrefs(widget.auth.client);
+  }
+
+  Future<void> _pickEndTime() async {
+    final hour = _endHour ?? 17;
+    final minute = _endMinute ?? 0;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: hour, minute: minute),
+    );
+    if (time == null || !mounted) return;
+    await TimeTrackingReminderPrefs.setEndHour(time.hour);
+    await TimeTrackingReminderPrefs.setEndMinute(time.minute);
+    setState(() {
+      _endHour = time.hour;
+      _endMinute = time.minute;
+    });
+    selectionClick();
+    await TimeTrackingReminderService().scheduleFromPrefs(widget.auth.client);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_enabled == null) {
+      return const Card(
+        child: ListTile(
+          title: Text('Zaman takibi hatırlatması'),
+          trailing: SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+
+    final endTimeStr = _endHour != null && _endMinute != null
+        ? '${_endHour!.toString().padLeft(2, '0')}:${_endMinute!.toString().padLeft(2, '0')}'
+        : '17:00';
+
+    return Card(
+      child: Column(
+        children: [
+          SwitchListTile(
+            title: const Text('Zaman takibi hatırlatması'),
+            subtitle: const Text(
+              'Çalışma günü mesai bitimine yakın zaman kaydı hatırlatması',
+            ),
+            value: _enabled!,
+            onChanged: _onEnabledChanged,
+          ),
+          const Divider(height: 1),
+          ListTile(
+            title: const Text('Mesai bitiş saati'),
+            subtitle: Text(
+              'Hatırlatma bitişten $kReminderMinutesBeforeEnd dk önce',
+            ),
+            trailing: Text(endTimeStr),
+            onTap: _enabled! ? _pickEndTime : null,
           ),
         ],
       ),

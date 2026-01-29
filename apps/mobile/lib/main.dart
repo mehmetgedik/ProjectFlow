@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:workmanager/workmanager.dart';
 
 import 'screens/connect_screen.dart';
 import 'screens/dashboard_screen.dart';
@@ -9,13 +10,16 @@ import 'screens/notifications_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/projects_screen.dart';
 import 'screens/splash_screen.dart';
+import 'screens/time_tracking_screen.dart';
 import 'services/local_notification_service.dart';
+import 'services/notification_background_service.dart';
 import 'state/auth_state.dart';
 import 'state/theme_state.dart';
 import 'theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Workmanager().initialize(callbackDispatcher);
   await LocalNotificationService().initialize();
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
@@ -52,6 +56,7 @@ class ProjectFlowApp extends StatelessWidget {
             '/dashboard': (_) => const DashboardScreen(),
             '/notifications': (_) => const NotificationsScreen(),
             '/profile': (_) => const ProfileScreen(),
+            '/time-tracking': (_) => const TimeTrackingScreen(),
           },
           home: const RootRouter(),
         );

@@ -8,9 +8,12 @@ import '../models/saved_query.dart';
 import '../models/work_package.dart';
 import '../state/auth_state.dart';
 import '../utils/app_logger.dart';
+import '../utils/error_messages.dart';
 import '../utils/haptic.dart';
 import '../widgets/letter_avatar.dart';
 import '../widgets/projectflow_logo_button.dart';
+import '../widgets/work_package_list_actions.dart';
+import 'create_work_package_screen.dart';
 import 'work_package_detail_screen.dart';
 
 enum MyWorkFilter { all, today, overdue }
@@ -86,53 +89,11 @@ class _QueryRow {
   }
 }
 
-/// Filtre çubuğunda kullanılan ikonlu buton (seçili/seçili değil).
-class _FilterIconButton extends StatelessWidget {
-  final IconData icon;
-  final IconData selectedIcon;
-  final String tooltip;
-  final bool selected;
-  final VoidCallback onPressed;
-
-  const _FilterIconButton({
-    required this.icon,
-    required this.selectedIcon,
-    required this.tooltip,
-    required this.selected,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Material(
-      color: selected
-          ? theme.colorScheme.primaryContainer
-          : theme.colorScheme.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(20),
-        child: Tooltip(
-          message: tooltip,
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: Icon(
-              selected ? selectedIcon : icon,
-              size: 22,
-              color: selected
-                  ? theme.colorScheme.onPrimaryContainer
-                  : theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class MyWorkPackagesScreen extends StatefulWidget {
-  const MyWorkPackagesScreen({super.key});
+  /// Dashboard vb. yerlerden görünümle açıldığında kullanılır.
+  final SavedQuery? initialQuery;
+
+  const MyWorkPackagesScreen({super.key, this.initialQuery});
 
   @override
   State<MyWorkPackagesScreen> createState() => _MyWorkPackagesScreenState();
@@ -140,8 +101,6 @@ class MyWorkPackagesScreen extends StatefulWidget {
 
 /// Varsayılan görünümde bir sayfada yüklenecek kayıt sayısı (P0-F03).
 const _kDefaultPageSize = 20;
-/// Kullanıcının seçebileceği sayfa boyutları.
-const _kPageSizeOptions = [10, 20, 50, 100];
 
 class _MyWorkPackagesScreenState extends State<MyWorkPackagesScreen> {
   bool _loading = true;
@@ -153,6 +112,8 @@ class _MyWorkPackagesScreenState extends State<MyWorkPackagesScreen> {
   int _totalCount = 0;
   /// Varsayılan görünümde bir sonraki sayfa offset'i (1 tabanlı).
   int _defaultNextOffset = 1;
+  /// Görünüm (query) modunda bir sonraki sayfa offset'i (1 tabanlı).
+  int _queryNextOffset = 1;
   /// Kullanıcının seçtiği sayfa boyutu.
   int _pageSize = _kDefaultPageSize;
 
@@ -176,6 +137,9 @@ class _MyWorkPackagesScreenState extends State<MyWorkPackagesScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialQuery != null) {
+      _selectedQuery = widget.initialQuery;
+    }
     _load();
     _loadQueries();
   }
@@ -213,6 +177,7 @@ class _MyWorkPackagesScreenState extends State<MyWorkPackagesScreen> {
         );
         _items = result.workPackages;
         _totalCount = result.total;
+        _queryNextOffset = 2;
         // API'den dönen tam sorguyu kullan (filtre, sıralama, gruplama web'deki gibi).
         _selectedQuery = result.query;
         // Görünümün filtrelerini formda göster (ama kullanıcı değiştirmediyse override göndermeyiz).
@@ -243,7 +208,7 @@ class _MyWorkPackagesScreenState extends State<MyWorkPackagesScreen> {
       if (e is TimeoutException) {
         _error = 'Sunucu yanıt vermedi (zaman aşımı). Bağlantıyı kontrol edip tekrar deneyin veya varsayılan görünüme dönün.';
       } else {
-        _error = e.toString();
+        _error = ErrorMessages.userFriendly(e);
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -280,6 +245,37 @@ class _MyWorkPackagesScreenState extends State<MyWorkPackagesScreen> {
   /// Varsayılan görünümde daha fazla sayfa yüklenebilir mi (P0-F03).
   bool get _showLoadMore =>
       _selectedQuery == null && _items.length < _totalCount && !_loading;
+
+  /// Görünüm (query) modunda daha fazla sayfa yüklenebilir mi.
+  bool get _showLoadMoreQuery =>
+      _selectedQuery != null && _items.length < _totalCount && !_loading && !_loadingMore;
+
+  Future<void> _loadMoreQuery() async {
+    if (_selectedQuery == null || _loadingMore) return;
+    if (_items.length >= _totalCount) return;
+    mediumImpact();
+    setState(() => _loadingMore = true);
+    try {
+      final client = context.read<AuthState>().client;
+      if (client == null) return;
+      final normalizedFilters = _normalizeFilters(_userFilters);
+      final result = await client.getQueryWithResults(
+        _selectedQuery!.id,
+        pageSize: _pageSize,
+        offset: _queryNextOffset,
+        overrideFilters: (_userFiltersDirty && normalizedFilters.isNotEmpty) ? normalizedFilters : null,
+      );
+      if (mounted) {
+        setState(() {
+          _items = [..._items, ...result.workPackages];
+          _queryNextOffset++;
+          _loadingMore = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loadingMore = false);
+    }
+  }
 
   List<WorkPackage> get _visibleItems {
     if (_selectedQuery != null) return _items;
@@ -862,11 +858,27 @@ class _MyWorkPackagesScreenState extends State<MyWorkPackagesScreen> {
     }
   }
 
-  /// Liste satırı leading: atanan kullanıcı avatar'ı (tek avatar; Atanan sütununda sadece isim gösterilir).
+  /// Liste satırı leading: atanan kullanıcı avatar'ı. Atanan yoksa silik varsayılan kullanıcı ikonu.
   Widget? _buildRowLeadingAvatar(BuildContext context, WorkPackage wp) {
     final auth = context.read<AuthState>();
     final displayName = (wp.assigneeName ?? '').trim();
-    if (displayName.isEmpty) return null;
+    final theme = Theme.of(context);
+
+    if (displayName.isEmpty) {
+      return SizedBox(
+        width: 40,
+        height: 40,
+        child: Material(
+          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+          shape: const CircleBorder(),
+          child: Icon(
+            Icons.person_rounded,
+            size: 24,
+            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+          ),
+        ),
+      );
+    }
 
     final apiBaseUrl = (auth.instanceApiBaseUrl ?? '').trim();
     final assigneeId = (wp.assigneeId ?? '').trim();
@@ -1015,44 +1027,6 @@ class _MyWorkPackagesScreenState extends State<MyWorkPackagesScreen> {
     return rows;
   }
 
-  /// AppBar'da gösterilen sayfa boyutu seçici (kompakt).
-  Widget _buildPageSizeSelector(BuildContext context) {
-    final theme = Theme.of(context);
-    return Tooltip(
-      message: 'Sayfa başına kayıt sayısı',
-      child: DropdownButton<int>(
-        value: _pageSize,
-        isDense: true,
-        underline: const SizedBox.shrink(),
-        icon: Icon(
-          Icons.arrow_drop_down_rounded,
-          size: 20,
-          color: theme.colorScheme.onSurface,
-        ),
-        style: theme.textTheme.labelLarge?.copyWith(
-          color: theme.colorScheme.onSurface,
-          fontWeight: FontWeight.w600,
-        ),
-        items: _kPageSizeOptions.map((size) {
-          return DropdownMenuItem<int>(
-            value: size,
-            child: Text('$size'),
-          );
-        }).toList(),
-        onChanged: (int? newSize) {
-          if (newSize != null && newSize != _pageSize) {
-            setState(() {
-              _pageSize = newSize;
-              _defaultNextOffset = 1;
-            });
-            mediumImpact();
-            _load();
-          }
-        },
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthState>();
@@ -1061,25 +1035,25 @@ class _MyWorkPackagesScreenState extends State<MyWorkPackagesScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              projectName,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            Text(
-              '$_totalCount kayıt · ${items.length} satır',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
+        title: Text(
+          projectName,
+          style: Theme.of(context).textTheme.titleMedium,
         ),
         actions: [
-          _buildPageSizeSelector(context),
+          IconButton(
+            onPressed: () {
+              mediumImpact();
+              Navigator.of(context)
+                  .push(
+                    MaterialPageRoute(
+                      builder: (_) => const CreateWorkPackageScreen(),
+                    ),
+                  )
+                  .then((_) => _load());
+            },
+            icon: const Icon(Icons.add_rounded, size: 24),
+            tooltip: 'Yeni iş paketi',
+          ),
           IconButton(
             onPressed: _load,
             icon: const Icon(Icons.refresh_rounded, size: 22),
@@ -1143,7 +1117,7 @@ class _MyWorkPackagesScreenState extends State<MyWorkPackagesScreen> {
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                _FilterIconButton(
+                                FilterIconButton(
                                   icon: Icons.filter_list_rounded,
                                   selectedIcon: Icons.filter_list_rounded,
                                   tooltip: 'Tümü',
@@ -1151,7 +1125,7 @@ class _MyWorkPackagesScreenState extends State<MyWorkPackagesScreen> {
                                   onPressed: () => _changeFilter(MyWorkFilter.all),
                                 ),
                                 const SizedBox(width: 4),
-                                _FilterIconButton(
+                                FilterIconButton(
                                   icon: Icons.today_outlined,
                                   selectedIcon: Icons.today_rounded,
                                   tooltip: 'Bugün bitiş',
@@ -1159,7 +1133,7 @@ class _MyWorkPackagesScreenState extends State<MyWorkPackagesScreen> {
                                   onPressed: () => _changeFilter(MyWorkFilter.today),
                                 ),
                                 const SizedBox(width: 4),
-                                _FilterIconButton(
+                                FilterIconButton(
                                   icon: Icons.event_busy_outlined,
                                   selectedIcon: Icons.event_busy_rounded,
                                   tooltip: 'Gecikmiş',
@@ -1167,7 +1141,7 @@ class _MyWorkPackagesScreenState extends State<MyWorkPackagesScreen> {
                                   onPressed: () => _changeFilter(MyWorkFilter.overdue),
                                 ),
                                 const SizedBox(width: 4),
-                                _FilterIconButton(
+                                FilterIconButton(
                                   icon: Icons.filter_alt_outlined,
                                   selectedIcon: Icons.filter_alt_rounded,
                                   tooltip: 'Yalnızca bu proje',
@@ -1198,7 +1172,7 @@ class _MyWorkPackagesScreenState extends State<MyWorkPackagesScreen> {
                             child: ListView.separated(
                               physics: const AlwaysScrollableScrollPhysics(),
                               itemCount: _selectedQuery != null
-                                  ? _buildQueryRows().length
+                                  ? _buildQueryRows().length + (_showLoadMoreQuery ? 1 : 0)
                                   : items.length + (_showLoadMore ? 1 : 0),
                               separatorBuilder: (_, __) => const Divider(height: 1),
                               itemBuilder: (context, index) {
@@ -1225,6 +1199,26 @@ class _MyWorkPackagesScreenState extends State<MyWorkPackagesScreen> {
 
                                 if (_selectedQuery != null) {
                                   final rows = _buildQueryRows();
+                                  if (_showLoadMoreQuery && index == rows.length) {
+                                    return ListTile(
+                                      title: Center(
+                                        child: _loadingMore
+                                            ? const Padding(
+                                                padding: EdgeInsets.symmetric(vertical: 12),
+                                                child: SizedBox(
+                                                  width: 24,
+                                                  height: 24,
+                                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                                ),
+                                              )
+                                            : IconButton(
+                                                onPressed: _loadMoreQuery,
+                                                icon: const Icon(Icons.add_circle_outline_rounded, size: 32),
+                                                tooltip: 'Daha fazla yükle',
+                                              ),
+                                      ),
+                                    );
+                                  }
                                   final row = rows[index];
                                   if (row.isGroupHeader) {
                                     final groupBy = _selectedQuery?.groupBy ?? '';
@@ -1363,9 +1357,14 @@ class _MyWorkPackagesScreenState extends State<MyWorkPackagesScreen> {
                                     );
                                   }
                                   final indent = row.depth * 16.0;
+                                  final isParent = row.hasChildren;
+                                  final tileColor = isParent
+                                      ? Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)
+                                      : null;
                                   return KeyedSubtree(
                                     key: ValueKey<String>('wp::${wp.id}'),
                                     child: ListTile(
+                                    tileColor: tileColor,
                                     leading: KeyedSubtree(
                                       key: ValueKey<String>('avatar::${wp.id}'),
                                       child: _buildRowLeadingAvatar(context, wp) ?? const SizedBox(width: 40, height: 40),
@@ -1555,7 +1554,7 @@ class _MyWorkPackagesScreenState extends State<MyWorkPackagesScreen> {
                           right: 10,
                           top: 92,
                           bottom: 18,
-                          child: _StickySideActions(
+                          child: StickySideActions(
                             collapsed: _sideActionsCollapsed,
                             onToggleCollapsed: () {
                               setState(() => _sideActionsCollapsed = !_sideActionsCollapsed);
@@ -1574,125 +1573,3 @@ class _MyWorkPackagesScreenState extends State<MyWorkPackagesScreen> {
     );
   }
 }
-
-class _StickySideActions extends StatelessWidget {
-  const _StickySideActions({
-    required this.collapsed,
-    required this.onToggleCollapsed,
-    required this.showSort,
-    required this.hasFilters,
-    required this.onOpenViews,
-    required this.onOpenSort,
-    required this.onOpenFilters,
-    required this.onOpenColumns,
-    required this.onRefresh,
-  });
-
-  final bool collapsed;
-  final VoidCallback onToggleCollapsed;
-  final bool showSort;
-  final bool hasFilters;
-  final Future<void> Function() onOpenViews;
-  final Future<void> Function() onOpenSort;
-  final Future<void> Function() onOpenFilters;
-  final Future<void> Function() onOpenColumns;
-  final Future<void> Function() onRefresh;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final bg = theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.9);
-    final border = theme.colorScheme.outlineVariant.withValues(alpha: 0.5);
-
-    Widget iconAction({
-      required IconData icon,
-      required String tooltip,
-      required VoidCallback onPressed,
-      bool highlight = false,
-    }) {
-      final fg = highlight ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant;
-      return Tooltip(
-        message: tooltip,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(14),
-            onTap: onPressed,
-            child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: Icon(icon, size: 22, color: fg),
-            ),
-          ),
-        ),
-      );
-    }
-
-    if (collapsed) {
-      return Align(
-        alignment: Alignment.centerRight,
-        child: Material(
-          color: bg,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-            side: BorderSide(color: border),
-          ),
-          child: iconAction(
-            icon: Icons.chevron_left_rounded,
-            tooltip: 'Menüyü aç',
-            onPressed: onToggleCollapsed,
-          ),
-        ),
-      );
-    }
-
-    return Align(
-      alignment: Alignment.centerRight,
-      child: Material(
-        color: bg,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: BorderSide(color: border),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            iconAction(
-              icon: Icons.chevron_right_rounded,
-              tooltip: 'Menüyü gizle',
-              onPressed: onToggleCollapsed,
-            ),
-            const Divider(height: 1),
-            iconAction(
-              icon: Icons.view_module_rounded,
-              tooltip: 'Görünüm seç',
-              onPressed: () => onOpenViews(),
-            ),
-            if (showSort)
-              iconAction(
-                icon: Icons.sort_rounded,
-                tooltip: 'Sırala',
-                onPressed: () => onOpenSort(),
-              ),
-            iconAction(
-              icon: hasFilters ? Icons.filter_alt_rounded : Icons.tune_rounded,
-              tooltip: 'Filtreler',
-              highlight: hasFilters,
-              onPressed: () => onOpenFilters(),
-            ),
-            iconAction(
-              icon: Icons.view_agenda_rounded,
-              tooltip: 'Kolonlar',
-              onPressed: () => onOpenColumns(),
-            ),
-            iconAction(
-              icon: Icons.refresh_rounded,
-              tooltip: 'Yenile',
-              onPressed: () => onRefresh(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-

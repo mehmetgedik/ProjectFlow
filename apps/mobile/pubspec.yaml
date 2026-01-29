@@ -37,6 +37,9 @@ dependencies:
   flutter_secure_storage: ^9.2.2
   shared_preferences: ^2.3.3
   flutter_local_notifications: ^18.0.1
+  timezone: ^0.9.0
+  workmanager: 0.9.0+3
+  flutter_svg: ^2.2.3
 
 dev_dependencies:
   flutter_test:
@@ -50,13 +53,13 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.4
 
-# ProjectFlow uygulama ikonu (assets/icon/app_icon.png). Değişiklikten sonra: dart run flutter_launcher_icons
+# ProjectFlow uygulama ikonu. Galeride görünen ikonun arka planı her zaman beyaz.
+# Kaynak: assets/icon/app_icon_legacy.png (tam ikon, beyaz zemin), app_icon_foreground.png (şeffaf zemin).
+# Değişiklikten sonra: dart run flutter_launcher_icons
 flutter_launcher_icons:
   android: true
   ios: false
-  # Legacy (pre-Android 8 / bazı launcher'lar)
   image_path: "assets/icon/app_icon_legacy.png"
-  # Android Adaptive Icon (Android 8+): siyah border/radius sorununu çözer
   adaptive_icon_background: "#FFFFFF"
   adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
   min_sdk_android: 21
@@ -73,8 +76,12 @@ flutter:
     - assets/icon/app_icon.png
     - assets/icon/app_icon_legacy.png
     - assets/icon/app_icon_foreground.png
+    - assets/icon/app_icon_transpara.png
     - assets/brand/projectflow_mark.png
     - assets/brand/projectflow_lockup.png
+    - assets/brand/projectflow_mark.svg
+    - assets/brand/projectflow_lockup.svg
+    - assets/brand/projectflow_lockup_white.svg
     - assets/
 
   # An image asset can refer to one or more resolution-specific "variants", see

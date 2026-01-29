@@ -6,7 +6,9 @@ import '../models/work_package.dart';
 import '../models/work_package_activity.dart';
 import '../models/time_entry.dart';
 import '../state/auth_state.dart';
+import '../state/dashboard_prefs.dart';
 import '../utils/app_logger.dart';
+import '../utils/error_messages.dart';
 import '../widgets/letter_avatar.dart';
 import '../widgets/projectflow_logo_button.dart';
 
@@ -27,6 +29,7 @@ class _WorkPackageDetailScreenState extends State<WorkPackageDetailScreen> {
   @override
   void initState() {
     super.initState();
+    DashboardPrefs.addRecentlyOpened(widget.workPackage.id);
     _load();
   }
 
@@ -49,7 +52,7 @@ class _WorkPackageDetailScreenState extends State<WorkPackageDetailScreen> {
       AppLogger.logError('İş detayı yüklenirken hata oluştu', error: e);
       if (mounted) {
         setState(() {
-          _loadError = e.toString();
+          _loadError = ErrorMessages.userFriendly(e);
           _loading = false;
         });
       }
@@ -80,7 +83,7 @@ class _WorkPackageDetailScreenState extends State<WorkPackageDetailScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  _loadError!.contains('404')
+                  _loadError!.contains('bulunamadı') || _loadError!.contains('404')
                       ? 'İş bulunamadı veya silinmiş.'
                       : _loadError!,
                   textAlign: TextAlign.center,
@@ -640,7 +643,7 @@ class _ActivityTabState extends State<_ActivityTab> {
       if (client == null) throw Exception('Oturum bulunamadı.');
       _items = await client.getWorkPackageActivities(widget.workPackageId);
     } catch (e) {
-      _error = e.toString();
+      _error = ErrorMessages.userFriendly(e);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -659,7 +662,7 @@ class _ActivityTabState extends State<_ActivityTab> {
       _commentController.clear();
       await _load();
     } catch (e) {
-      setState(() => _error = e.toString());
+      setState(() => _error = ErrorMessages.userFriendly(e));
     }
   }
 
@@ -861,7 +864,7 @@ class _TimeTabState extends State<_TimeTab> {
       _commentController.clear();
       await _load();
     } catch (e) {
-      setState(() => _error = e.toString());
+      setState(() => _error = ErrorMessages.userFriendly(e));
       AppLogger.logError('Zaman kaydı oluşturulurken hata oluştu', error: e);
     }
   }

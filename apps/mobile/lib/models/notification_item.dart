@@ -27,6 +27,13 @@ class NotificationItem {
     this.actorName,
   });
 
+  static bool _readFromJson(dynamic v) {
+    if (v == null) return false;
+    if (v is bool) return v;
+    final s = v.toString().toLowerCase();
+    return s == 'true' || s == 't' || s == '1';
+  }
+
   static String? _idFromHref(dynamic href) {
     if (href == null) return null;
     final s = href.toString().trim();
@@ -63,7 +70,7 @@ class NotificationItem {
       id: (json['id'] ?? '').toString(),
       subject: subject,
       reason: (json['reason'] ?? '').toString(),
-      read: json['readIAN'] == true,
+      read: _readFromJson(json['readIAN']),
       createdAt: created,
       projectName: project?['title']?.toString(),
       resourceHref: resourceHref?.isEmpty == true ? null : resourceHref,

@@ -4,9 +4,13 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../api/openproject_client.dart';
 import '../models/project.dart';
 import '../services/local_notification_service.dart';
+import '../services/notification_background_service.dart';
+import '../services/time_tracking_reminder_service.dart';
 
 class AuthState extends ChangeNotifier {
   static const _kKeyInstance = 'openproject.instanceBaseUrl';
@@ -21,6 +25,7 @@ class AuthState extends ChangeNotifier {
   String? userDisplayName;
   String? userLogin;
   String? userAvatarUrl;
+  String? userEmail;
   int unreadNotificationCount = 0;
 
   /// Yeni bildirim geldiğinde telefon bildirimi göstermek için; -1 = henüz bilinmiyor.
@@ -81,8 +86,10 @@ class AuthState extends ChangeNotifier {
       // API base örn: https://host/api/v3/ -> avatar URL'leri bu base ile oluşturulur (web ile aynı endpoint).
       _instanceOrigin = Uri.parse(apiBase);
       _instanceApiBaseUrl = apiBase.replaceAll(RegExp(r'/+$'), '');
+      await _loadLastNotifiedCountFromPrefs();
       _loadUserDisplayName();
       startNotificationPolling();
+      registerBackgroundNotificationCheck();
     }
 
     isInitialized = true;
@@ -98,6 +105,7 @@ class AuthState extends ChangeNotifier {
         userDisplayName = me['name'];
         userLogin = me['login'];
         userAvatarUrl = me['avatar'];
+        userEmail = me['email'];
         // Web'deki gibi: API avatar dönmezse /my/avatar yedek URL kullan
         if (userAvatarUrl == null || userAvatarUrl!.isEmpty) {
           final displayUrl = instanceDisplayUrl;
@@ -123,6 +131,21 @@ class AuthState extends ChangeNotifier {
     await _loadUserDisplayName();
   }
 
+  Future<void> _loadLastNotifiedCountFromPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final last = prefs.getInt(kPrefKeyLastNotifiedUnreadCount);
+      if (last != null) _lastNotifiedUnreadCount = last;
+    } catch (_) {}
+  }
+
+  Future<void> _saveLastNotifiedCountToPrefs(int count) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(kPrefKeyLastNotifiedUnreadCount, count);
+    } catch (_) {}
+  }
+
   Future<void> _refreshUnreadNotificationCount() async {
     final c = client;
     if (c == null) return;
@@ -137,6 +160,7 @@ class AuthState extends ChangeNotifier {
         LocalNotificationService().showUnreadSummary(count: count);
       }
       _lastNotifiedUnreadCount = count;
+      await _saveLastNotifiedCountToPrefs(count);
     } catch (_) {
       if (unreadNotificationCount != 0) {
         unreadNotificationCount = 0;
@@ -145,11 +169,11 @@ class AuthState extends ChangeNotifier {
     }
   }
 
-  /// OpenProject'te yeni bildirim geldiğinde telefon bildirimi için periyodik kontrolü başlatır.
+  /// Uygulama açıkken periyodik kontrol (daha sık; 5 dakika). Arka plan için Workmanager kullanılır.
   void startNotificationPolling() {
     if (client == null || _notificationPollTimer != null) return;
     _notificationPollTimer = Timer.periodic(
-      const Duration(minutes: 2),
+      const Duration(minutes: 5),
       (_) => refreshUnreadNotificationCount(),
     );
   }
@@ -182,6 +206,8 @@ class AuthState extends ChangeNotifier {
       userAvatarUrl = me['avatar'];
     }
     startNotificationPolling();
+    registerBackgroundNotificationCheck();
+    TimeTrackingReminderService().scheduleFromPrefs(c);
     refreshUnreadNotificationCount();
     notifyListeners();
   }
@@ -196,6 +222,8 @@ class AuthState extends ChangeNotifier {
   /// Çıkış: Oturum kapatılır; instance URL ve API key gibi ayarlar silinmez, tekrar girişte formda kalır.
   Future<void> logout() async {
     _stopNotificationPolling();
+    await cancelBackgroundNotificationCheck();
+    await TimeTrackingReminderService().cancel();
     client = null;
     activeProject = null;
     userDisplayName = null;
@@ -206,6 +234,27 @@ class AuthState extends ChangeNotifier {
     _instanceOrigin = null;
     _instanceApiBaseUrl = null;
     // _storedInstanceBaseUrl ve _storedApiKey silinmez; çıkış sonrası formda kalır.
+    notifyListeners();
+  }
+
+  /// Saklanan tüm bağlantı bilgilerini siler (instance URL, API key, aktif proje). Oturum da kapatılır.
+  Future<void> clearStoredSettings() async {
+    _stopNotificationPolling();
+    await TimeTrackingReminderService().cancel();
+    await _storage.delete(key: _kKeyInstance);
+    await _storage.delete(key: _kKeyApiKey);
+    await _storage.delete(key: _kKeyActiveProjectId);
+    client = null;
+    activeProject = null;
+    userDisplayName = null;
+    userLogin = null;
+    userAvatarUrl = null;
+    unreadNotificationCount = 0;
+    _storedInstanceBaseUrl = null;
+    _storedApiKey = null;
+    _activeProjectId = null;
+    _instanceOrigin = null;
+    _instanceApiBaseUrl = null;
     notifyListeners();
   }
 

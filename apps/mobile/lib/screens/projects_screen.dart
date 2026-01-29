@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../models/project.dart';
 import '../state/auth_state.dart';
+import '../utils/error_messages.dart';
 import '../utils/haptic.dart';
 import '../widgets/letter_avatar.dart';
 import '../widgets/projectflow_logo_button.dart';
@@ -87,7 +88,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
         }
       }
     } catch (e) {
-      _error = e.toString();
+      _error = ErrorMessages.userFriendly(e);
     } finally {
       if (mounted) setState(() => _loading = false);
     }

@@ -4,6 +4,11 @@ class TimeEntry {
   final double hours;
   final String? comment;
   final String? activityName;
+  /// İş paketi ID (zaman kaydı listesinde hangi işe ait olduğunu göstermek için).
+  final String? workPackageId;
+  final String? workPackageSubject;
+  /// Ekip görünümünde gösterilmek üzere kullanıcı adı (_links.user.title).
+  final String? userName;
 
   const TimeEntry({
     required this.id,
@@ -11,6 +16,9 @@ class TimeEntry {
     required this.hours,
     this.comment,
     this.activityName,
+    this.workPackageId,
+    this.workPackageSubject,
+    this.userName,
   });
 
   factory TimeEntry.fromJson(Map json) {
@@ -44,6 +52,18 @@ class TimeEntry {
 
     final links = json['_links'] as Map<String, dynamic>? ?? const {};
     final activity = links['activity'] as Map<String, dynamic>?;
+    final userLink = links['user'] as Map<String, dynamic>?;
+    final userName = userLink?['title']?.toString();
+    final workPackageLink = links['workPackage'] ?? links['entity'];
+    String? wpId;
+    if (workPackageLink is Map) {
+      final href = workPackageLink['href']?.toString() ?? '';
+      final match = RegExp(r'/work_packages/(\d+)$').firstMatch(href);
+      if (match != null) wpId = match.group(1);
+    }
+    final embedded = json['_embedded'] as Map<String, dynamic>?;
+    final wpEmbedded = embedded?['workPackage'] as Map<String, dynamic>?;
+    final wpSubject = wpEmbedded?['subject']?.toString();
 
     return TimeEntry(
       id: (json['id'] ?? '').toString(),
@@ -51,6 +71,9 @@ class TimeEntry {
       hours: parsedHours,
       activityName: activity?['title']?.toString(),
       comment: (json['comment']?['raw'] ?? '').toString(),
+      workPackageId: wpId,
+      workPackageSubject: wpSubject,
+      userName: userName,
     );
   }
 }

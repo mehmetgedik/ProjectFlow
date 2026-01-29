@@ -14,6 +14,8 @@ class WorkPackage {
   final String? typeId;
   final String? parentId;
   final String? parentSubject;
+  final String? versionId;
+  final String? versionName;
 
   const WorkPackage({
     required this.id,
@@ -31,6 +33,8 @@ class WorkPackage {
     this.typeId,
     this.parentId,
     this.parentSubject,
+    this.versionId,
+    this.versionName,
   });
 
   static String? _idFromHref(dynamic href) {
@@ -49,6 +53,7 @@ class WorkPackage {
     final type = links['type'] as Map<String, dynamic>?;
     final project = links['project'] as Map<String, dynamic>?;
     final parent = links['parent'] as Map<String, dynamic>?;
+    final version = links['version'] as Map<String, dynamic>?;
     final due = json['dueDate'] as String?;
     final updated = json['updatedAt'] as String?;
     final desc = json['description'] as Map<String, dynamic>?;
@@ -70,6 +75,8 @@ class WorkPackage {
       typeId: _idFromHref(type?['href']),
       parentId: _idFromHref(parent?['href']),
       parentSubject: parent?['title']?.toString(),
+      versionId: _idFromHref(version?['href']),
+      versionName: version?['title']?.toString(),
     );
   }
 }

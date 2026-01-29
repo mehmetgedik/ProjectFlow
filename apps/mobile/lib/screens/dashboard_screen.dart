@@ -4,8 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../api/openproject_client.dart';
+import '../models/saved_query.dart';
+import '../models/version.dart';
 import '../models/work_package.dart';
 import '../state/auth_state.dart';
+import '../state/dashboard_prefs.dart';
+import '../utils/error_messages.dart';
 import '../utils/haptic.dart';
 import '../widgets/letter_avatar.dart';
 import '../widgets/projectflow_logo_button.dart';
@@ -35,6 +39,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _loading = true;
   String? _error;
   List<WorkPackage> _items = const [];
+  List<WorkPackage> _recentlyOpened = const [];
+  List<SavedQuery> _views = const [];
+  Version? _activeVersion;
+  int _totalOpenCount = 0;
 
   bool _showStatusChart = true;
   bool _showTypeChart = true;
@@ -47,6 +55,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _load();
+    _loadPrefs();
+  }
+
+  Future<void> _loadPrefs() async {
+    final showStatus = await DashboardPrefs.getShowStatusChart();
+    final showType = await DashboardPrefs.getShowTypeChart();
+    final showTimeSeries = await DashboardPrefs.getShowTimeSeriesChart();
+    final showUpcoming = await DashboardPrefs.getShowUpcoming();
+    final statusTypeStr = await DashboardPrefs.getStatusChartType();
+    final typeTypeStr = await DashboardPrefs.getTypeChartType();
+    if (!mounted) return;
+    setState(() {
+      _showStatusChart = showStatus;
+      _showTypeChart = showType;
+      _showTimeSeriesChart = showTimeSeries;
+      _showUpcoming = showUpcoming;
+      final statusMatch = DashboardChartType.values.where((e) => e.name == statusTypeStr);
+      _statusChartType = statusMatch.isEmpty ? DashboardChartType.bar : statusMatch.first;
+      final typeMatch = DashboardChartType.values.where((e) => e.name == typeTypeStr);
+      _typeChartType = typeMatch.isEmpty ? DashboardChartType.pie : typeMatch.first;
+    });
   }
 
   OpenProjectClient? _client(BuildContext context) => context.read<AuthState>().client;
@@ -64,14 +93,56 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (projectId == null || projectId.isEmpty) {
         throw Exception('Aktif proje bulunamadı.');
       }
+
+      final versions = await client.getProjectVersions(projectId);
+      Version? active;
+      for (final v in versions) {
+        if (v.isOpen) {
+          active = v;
+          break;
+        }
+      }
+      _activeVersion = active;
+
+      final extraFilters = _activeVersion != null
+          ? <Map<String, dynamic>>[
+              {'version': {'operator': '=', 'values': ['${_activeVersion!.id}']}},
+            ]
+          : null;
       final result = await client.getMyOpenWorkPackages(
         projectId: projectId,
         pageSize: 200,
         offset: 1,
+        extraFilters: extraFilters,
       );
       _items = result.workPackages;
+
+      if (_activeVersion != null) {
+        final totalResult = await client.getMyOpenWorkPackages(
+          projectId: projectId,
+          pageSize: 1,
+          offset: 1,
+        );
+        _totalOpenCount = totalResult.total;
+      } else {
+        _totalOpenCount = _items.length;
+      }
+
+      final recentIds = await DashboardPrefs.getRecentlyOpenedIds();
+      if (recentIds.isNotEmpty) {
+        final recent = await client.getWorkPackagesByIds(recentIds);
+        final byId = {for (final wp in recent) wp.id: wp};
+        _recentlyOpened = recentIds.map((id) => byId[id]).whereType<WorkPackage>().toList();
+      } else {
+        _recentlyOpened = const [];
+      }
+
+      final views = await client.getQueries(projectId: projectId);
+      final list = views.where((q) => !q.hidden).toList();
+      list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      _views = list;
     } catch (e) {
-      _error = e.toString();
+      _error = ErrorMessages.userFriendly(e);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -154,10 +225,145 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return list.take(5).toList();
   }
 
+  /// Son güncellenen işler (updatedAt'e göre azalan, en fazla 8).
+  List<WorkPackage> get _recentlyUpdated {
+    final list = List<WorkPackage>.from(_items);
+    list.sort((a, b) {
+      final ad = a.updatedAt ?? DateTime(0);
+      final bd = b.updatedAt ?? DateTime(0);
+      return bd.compareTo(ad);
+    });
+    return list.take(8).toList();
+  }
+
+  /// Sprint'teki işler önceliğe göre (priorityName, sonra subject).
+  List<WorkPackage> get _sprintWorkByPriority {
+    final list = List<WorkPackage>.from(_items);
+    list.sort((a, b) {
+      final pa = a.priorityName ?? '';
+      final pb = b.priorityName ?? '';
+      final cmp = pa.compareTo(pb);
+      if (cmp != 0) return cmp;
+      final sa = a.statusName;
+      final sb = b.statusName;
+      final cmp2 = sa.compareTo(sb);
+      if (cmp2 != 0) return cmp2;
+      final ta = a.typeName ?? '';
+      final tb = b.typeName ?? '';
+      final cmp3 = ta.compareTo(tb);
+      if (cmp3 != 0) return cmp3;
+      return a.subject.compareTo(b.subject);
+    });
+    return list;
+  }
+
+  /// Sprint işlerini yalnızca önceliğe göre gruplar (başlık + liste); satırda durum ve tip gösterilir.
+  List<({String label, List<WorkPackage> items})> get _sprintWorkGrouped {
+    final list = _sprintWorkByPriority;
+    if (list.isEmpty) return [];
+    final result = <({String label, List<WorkPackage> items})>[];
+    String? curPriority;
+    List<WorkPackage> cur = [];
+    void flush() {
+      if (cur.isEmpty) return;
+      result.add((label: curPriority != null && curPriority!.isNotEmpty ? 'Öncelik: $curPriority' : 'Öncelik belirtilmemiş', items: List.from(cur)));
+      cur = [];
+    }
+    for (final wp in list) {
+      final p = wp.priorityName ?? '';
+      if (p != curPriority) {
+        flush();
+        curPriority = p.isEmpty ? null : p;
+      }
+      cur.add(wp);
+    }
+    flush();
+    return result;
+  }
+
   String _formatDate(DateTime? date) {
     if (date == null) return '-';
     final d = date.toLocal();
     return '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year}';
+  }
+
+  /// Diğer listelerle aynı: durum için renk ve ikon.
+  (Color bg, Color fg, IconData icon) _statusVisuals(BuildContext context, String status) {
+    final theme = Theme.of(context);
+    final s = status.toLowerCase();
+    if (s.contains('yeni') || s.contains('new')) {
+      return (theme.colorScheme.primaryContainer, theme.colorScheme.onPrimaryContainer, Icons.fiber_new_rounded);
+    }
+    if (s.contains('devam') || s.contains('progress') || s.contains('in progress')) {
+      return (theme.colorScheme.tertiaryContainer, theme.colorScheme.onTertiaryContainer, Icons.play_circle_rounded);
+    }
+    if (s.contains('bekle') || s.contains('on hold') || s.contains('pending')) {
+      return (theme.colorScheme.surfaceVariant, theme.colorScheme.onSurfaceVariant, Icons.pause_circle_rounded);
+    }
+    if (s.contains('tamam') || s.contains('closed') || s.contains('done') || s.contains('çözüldü')) {
+      return (theme.colorScheme.secondaryContainer, theme.colorScheme.onSecondaryContainer, Icons.check_circle_rounded);
+    }
+    if (s.contains('iptal') || s.contains('cancel')) {
+      return (theme.colorScheme.errorContainer, theme.colorScheme.onErrorContainer, Icons.cancel_rounded);
+    }
+    return (theme.colorScheme.primaryContainer, theme.colorScheme.onPrimaryContainer, Icons.radio_button_unchecked_rounded);
+  }
+
+  /// Diğer listelerle aynı: iş tipi için renk ve ikon.
+  (Color bg, Color fg, IconData icon) _typeVisuals(BuildContext context, String type) {
+    final theme = Theme.of(context);
+    final t = (type.isEmpty ? '—' : type).toLowerCase();
+    if (t.contains('bug') || t.contains('hata')) {
+      return (theme.colorScheme.errorContainer, theme.colorScheme.onErrorContainer, Icons.bug_report_rounded);
+    }
+    if (t.contains('task') || t.contains('görev')) {
+      return (theme.colorScheme.secondaryContainer, theme.colorScheme.onSecondaryContainer, Icons.task_alt_rounded);
+    }
+    if (t.contains('feature') || t.contains('özellik')) {
+      return (theme.colorScheme.tertiaryContainer, theme.colorScheme.onTertiaryContainer, Icons.auto_awesome_rounded);
+    }
+    if (t.contains('milestone') || t.contains('kilometre')) {
+      return (theme.colorScheme.primaryContainer, theme.colorScheme.onPrimaryContainer, Icons.flag_rounded);
+    }
+    return (theme.colorScheme.surfaceVariant, theme.colorScheme.onSurfaceVariant, Icons.label_rounded);
+  }
+
+  /// Öncelik için renk ve ikon (diğer listelerdeki chip stiliyle uyumlu).
+  (Color bg, Color fg, IconData icon) _priorityVisuals(BuildContext context, String priority) {
+    final theme = Theme.of(context);
+    final p = (priority.isEmpty ? '' : priority).toLowerCase();
+    if (p.contains('acil') || p.contains('urgent') || p.contains('yüksek') || p.contains('high') || p.contains('critical')) {
+      return (theme.colorScheme.errorContainer, theme.colorScheme.onErrorContainer, Icons.priority_high_rounded);
+    }
+    if (p.contains('orta') || p.contains('medium') || p.contains('normal')) {
+      return (theme.colorScheme.tertiaryContainer, theme.colorScheme.onTertiaryContainer, Icons.remove_circle_outline_rounded);
+    }
+    if (p.contains('düşük') || p.contains('low')) {
+      return (theme.colorScheme.surfaceVariant, theme.colorScheme.onSurfaceVariant, Icons.low_priority_rounded);
+    }
+    return (theme.colorScheme.surfaceVariant, theme.colorScheme.onSurfaceVariant, Icons.flag_rounded);
+  }
+
+  Widget _buildMetaChip(BuildContext context, {required Color bg, required Color fg, required IconData icon, required String text}) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: fg),
+          const SizedBox(width: 3),
+          Text(
+            text,
+            style: theme.textTheme.labelSmall?.copyWith(color: fg, fontSize: 10),
+          ),
+        ],
+      ),
+    );
   }
 
   void _openSettingsSheet() {
@@ -187,6 +393,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       onChanged: (v) {
                         setModalState(() => showStatus = v);
                         setState(() => _showStatusChart = v);
+                        DashboardPrefs.setShowStatusChart(v);
                       },
                     ),
                     ListTile(
@@ -202,6 +409,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           if (v == null) return;
                           setModalState(() => statusType = v);
                           setState(() => _statusChartType = v);
+                          DashboardPrefs.setStatusChartType(v.name);
                         },
                       ),
                     ),
@@ -211,6 +419,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       onChanged: (v) {
                         setModalState(() => showType = v);
                         setState(() => _showTypeChart = v);
+                        DashboardPrefs.setShowTypeChart(v);
                       },
                     ),
                     ListTile(
@@ -226,6 +435,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           if (v == null) return;
                           setModalState(() => typeType = v);
                           setState(() => _typeChartType = v);
+                          DashboardPrefs.setTypeChartType(v.name);
                         },
                       ),
                     ),
@@ -236,6 +446,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       onChanged: (v) {
                         setModalState(() => showTimeSeries = v);
                         setState(() => _showTimeSeriesChart = v);
+                        DashboardPrefs.setShowTimeSeriesChart(v);
                       },
                     ),
                     SwitchListTile(
@@ -244,6 +455,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       onChanged: (v) {
                         setModalState(() => showUpcoming = v);
                         setState(() => _showUpcoming = v);
+                        DashboardPrefs.setShowUpcoming(v);
                       },
                     ),
                     const SizedBox(height: 8),
@@ -294,6 +506,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           IconButton(
             onPressed: () {
               lightImpact();
+              Navigator.of(context).pushNamed('/time-tracking');
+            },
+            icon: const Icon(Icons.schedule, size: 20),
+            tooltip: 'Zaman takibi',
+          ),
+          IconButton(
+            onPressed: () {
+              lightImpact();
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const MyWorkPackagesScreen()),
               );
@@ -311,16 +531,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: FloatingActionButton(
         onPressed: () {
           mediumImpact();
           Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const MyWorkPackagesScreen()),
           );
         },
-        icon: const Icon(Icons.list_alt),
-        label: const Text('Benim işlerim'),
-        tooltip: 'İş listesine git',
+        tooltip: 'Benim işlerim',
+        child: const Icon(Icons.list_alt),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -349,34 +568,287 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _DashboardStatCard(
-                                title: 'Açık işler',
-                                value: _openCount.toString(),
-                                color: theme.colorScheme.primary,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: _DashboardStatCard(
-                                title: 'Bugün bitiş',
-                                value: _todayCount.toString(),
-                                color: theme.colorScheme.tertiary,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: _DashboardStatCard(
-                                title: 'Gecikmiş',
-                                value: _overdueCount.toString(),
-                                color: theme.colorScheme.error,
-                              ),
-                            ),
-                          ],
+                        IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (_activeVersion != null) ...[
+                                Expanded(
+                                  child: _DashboardStatCard(
+                                    title: 'Aktif sprint',
+                                    value: _activeVersion!.name,
+                                    color: theme.colorScheme.primary,
+                                    valueIsLabel: true,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: _DashboardStatCard(
+                                    title: 'Sprint\'teki işlerim',
+                                    value: _openCount.toString(),
+                                    color: theme.colorScheme.tertiary,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: _DashboardStatCard(
+                                    title: 'Bekleyen toplam',
+                                    value: _totalOpenCount.toString(),
+                                    color: theme.colorScheme.secondary,
+                                  ),
+                                ),
+                              ] else ...[
+                                Expanded(
+                                  child: _DashboardStatCard(
+                                    title: 'Açık işler',
+                                    value: _openCount.toString(),
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
                         ),
                         const SizedBox(height: 16),
+                        if (_activeVersion != null && _sprintWorkGrouped.isNotEmpty) ...[
+                          Text(
+                            'Sprint\'teki işlerim (öncelik · durum · tip)',
+                            style: theme.textTheme.titleSmall,
+                          ),
+                          const SizedBox(height: 8),
+                          Card(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                for (var g = 0; g < _sprintWorkGrouped.length; g++) ...[
+                                  if (g > 0) const Divider(height: 1),
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                                    child: Text(
+                                      _sprintWorkGrouped[g].label,
+                                      style: theme.textTheme.labelLarge?.copyWith(
+                                        color: theme.colorScheme.primary,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                  ..._sprintWorkGrouped[g].items.map((wp) {
+                                    final auth = context.read<AuthState>();
+                                    final displayName = (wp.assigneeName ?? '').trim();
+                                    final apiBaseUrl = (auth.instanceApiBaseUrl ?? '').trim();
+                                    final assigneeId = (wp.assigneeId ?? '').trim();
+                                    final avatarUrl = (apiBaseUrl.isNotEmpty && assigneeId.isNotEmpty)
+                                        ? '$apiBaseUrl/users/$assigneeId/avatar'
+                                        : null;
+                                    final priorityText = wp.priorityName ?? 'Öncelik yok';
+                                    final statusVs = _statusVisuals(context, wp.statusName);
+                                    final typeVs = _typeVisuals(context, wp.typeName ?? '—');
+                                    final priorityVs = _priorityVisuals(context, priorityText);
+                                    final meta = <Widget>[
+                                      _buildMetaChip(context, bg: priorityVs.$1, fg: priorityVs.$2, icon: priorityVs.$3, text: priorityText),
+                                      _buildMetaChip(context, bg: statusVs.$1, fg: statusVs.$2, icon: statusVs.$3, text: wp.statusName),
+                                      _buildMetaChip(context, bg: typeVs.$1, fg: typeVs.$2, icon: typeVs.$3, text: wp.typeName ?? '—'),
+                                    ];
+                                    return ListTile(
+                                      dense: true,
+                                      leading: displayName.isNotEmpty
+                                          ? LetterAvatar(
+                                              displayName: displayName,
+                                              imageUrl: avatarUrl,
+                                              imageHeaders: avatarUrl != null ? auth.authHeadersForInstanceImages : null,
+                                              size: 36,
+                                            )
+                                          : null,
+                                      title: Text(
+                                        '#${wp.id} · ${wp.subject}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.textTheme.bodyMedium,
+                                      ),
+                                      subtitle: Padding(
+                                        padding: const EdgeInsets.only(top: 4),
+                                        child: Wrap(
+                                          spacing: 8,
+                                          runSpacing: 4,
+                                          crossAxisAlignment: WrapCrossAlignment.center,
+                                          children: meta,
+                                        ),
+                                      ),
+                                      trailing: const Icon(Icons.chevron_right, size: 20),
+                                      onTap: () {
+                                        lightImpact();
+                                        Navigator.of(context).push(
+                                          MaterialPageRoute(
+                                            builder: (_) =>
+                                                WorkPackageDetailScreen(workPackage: wp),
+                                          ),
+                                        );
+                                      },
+                                    );
+                                  }),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                        if (_views.isNotEmpty) ...[
+                          Text(
+                            'Kolay erişim – Görünümler',
+                            style: theme.textTheme.titleSmall,
+                          ),
+                          const SizedBox(height: 8),
+                          Card(
+                            child: ListView.separated(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: _views.length,
+                              separatorBuilder: (_, __) => const Divider(height: 1),
+                              itemBuilder: (context, index) {
+                                final view = _views[index];
+                                return ListTile(
+                                  leading: Icon(
+                                    view.starred ? Icons.star : Icons.view_list,
+                                    size: 24,
+                                    color: view.starred
+                                        ? theme.colorScheme.primary
+                                        : theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                  title: Text(
+                                    view.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  subtitle: view.projectId == null
+                                      ? const Text('Tüm projeler')
+                                      : null,
+                                  trailing: const Icon(Icons.chevron_right, size: 20),
+                                  onTap: () {
+                                    lightImpact();
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => MyWorkPackagesScreen(initialQuery: view),
+                                      ),
+                                    );
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                        if (_recentlyOpened.isNotEmpty) ...[
+                          Text(
+                            'Son açılan işler',
+                            style: theme.textTheme.titleSmall,
+                          ),
+                          const SizedBox(height: 8),
+                          Card(
+                            child: ListView.separated(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: _recentlyOpened.length,
+                              separatorBuilder: (_, __) => const Divider(height: 1),
+                              itemBuilder: (context, index) {
+                                final wp = _recentlyOpened[index];
+                                final auth = context.read<AuthState>();
+                                final displayName = (wp.assigneeName ?? '').trim();
+                                final apiBaseUrl = (auth.instanceApiBaseUrl ?? '').trim();
+                                final assigneeId = (wp.assigneeId ?? '').trim();
+                                final avatarUrl = (apiBaseUrl.isNotEmpty && assigneeId.isNotEmpty)
+                                    ? '$apiBaseUrl/users/$assigneeId/avatar'
+                                    : null;
+                                return ListTile(
+                                  leading: displayName.isNotEmpty
+                                      ? LetterAvatar(
+                                          displayName: displayName,
+                                          imageUrl: avatarUrl,
+                                          imageHeaders: avatarUrl != null ? auth.authHeadersForInstanceImages : null,
+                                          size: 40,
+                                        )
+                                      : null,
+                                  title: Text(
+                                    '#${wp.id} · ${wp.subject}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  subtitle: Text(
+                                    '${wp.statusName} · Güncelleme: ${_formatDate(wp.updatedAt)}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  trailing: const Icon(Icons.chevron_right, size: 20),
+                                  onTap: () {
+                                    lightImpact();
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) =>
+                                            WorkPackageDetailScreen(workPackage: wp),
+                                      ),
+                                    );
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                        if (_recentlyUpdated.isNotEmpty) ...[
+                          Text(
+                            'Son yapılan değişiklikler',
+                            style: theme.textTheme.titleSmall,
+                          ),
+                          const SizedBox(height: 8),
+                          Card(
+                            child: ListView.separated(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: _recentlyUpdated.length,
+                              separatorBuilder: (_, __) => const Divider(height: 1),
+                              itemBuilder: (context, index) {
+                                final wp = _recentlyUpdated[index];
+                                final auth = context.read<AuthState>();
+                                final displayName = (wp.assigneeName ?? '').trim();
+                                final apiBaseUrl = (auth.instanceApiBaseUrl ?? '').trim();
+                                final assigneeId = (wp.assigneeId ?? '').trim();
+                                final avatarUrl = (apiBaseUrl.isNotEmpty && assigneeId.isNotEmpty)
+                                    ? '$apiBaseUrl/users/$assigneeId/avatar'
+                                    : null;
+                                return ListTile(
+                                  leading: displayName.isNotEmpty
+                                      ? LetterAvatar(
+                                          displayName: displayName,
+                                          imageUrl: avatarUrl,
+                                          imageHeaders: avatarUrl != null ? auth.authHeadersForInstanceImages : null,
+                                          size: 40,
+                                        )
+                                      : null,
+                                  title: Text(
+                                    '#${wp.id} · ${wp.subject}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  subtitle: Text(
+                                    '${wp.statusName} · Son güncelleme: ${_formatDate(wp.updatedAt)}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  trailing: const Icon(Icons.chevron_right, size: 20),
+                                  onTap: () {
+                                    lightImpact();
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) =>
+                                            WorkPackageDetailScreen(workPackage: wp),
+                                      ),
+                                    );
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
                         if (_showStatusChart && _statusCounts.isNotEmpty) ...[
                           Text(
                             'Duruma göre dağılım',
@@ -492,11 +964,13 @@ class _DashboardStatCard extends StatelessWidget {
   final String title;
   final String value;
   final Color color;
+  final bool valueIsLabel;
 
   const _DashboardStatCard({
     required this.title,
     required this.value,
     required this.color,
+    this.valueIsLabel = false,
   });
 
   @override
@@ -506,7 +980,9 @@ class _DashboardStatCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.max,
+          mainAxisAlignment: MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
               title,
@@ -517,11 +993,14 @@ class _DashboardStatCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               value,
-              style: theme.textTheme.titleMedium?.copyWith(
+              maxLines: valueIsLabel ? 2 : 1,
+              overflow: TextOverflow.ellipsis,
+              style: (valueIsLabel ? theme.textTheme.titleSmall : theme.textTheme.titleMedium)?.copyWith(
                 color: color,
                 fontWeight: FontWeight.w700,
               ),
             ),
+            const Spacer(),
           ],
         ),
       ),

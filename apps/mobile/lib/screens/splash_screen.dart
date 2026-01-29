@@ -31,39 +31,21 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     return Scaffold(
       body: SafeArea(
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                decoration: BoxDecoration(
-                  // Logo dışında kalan alan: koyu temada siyah, açık temada beyaz.
-                  color: isDark ? Colors.black : Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: theme.colorScheme.shadow.withValues(alpha: 0.12),
-                      blurRadius: 24,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                 child: SizedBox(
                   width: 280,
                   height: 180,
-                  child: ClipRect(
-                    child: Transform.scale(
-                      // Asset içinde kalan boşlukları kırp (logo daha büyük görünür).
-                      scale: 1.18,
-                      child: Image.asset(
-                        'assets/brand/projectflow_lockup.png',
-                        fit: BoxFit.contain,
-                      ),
-                    ),
+                  child: Image.asset(
+                    'assets/icon/app_icon_transpara.png',
+                    fit: BoxFit.contain,
+                    isAntiAlias: true,
                   ),
                 ),
               ),

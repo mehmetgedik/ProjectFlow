@@ -51,7 +51,7 @@ OpenProject hesabınızdan API anahtarını alıp ProjectFlow ile bağlanarak i�
    cd apps/mobile && dart run flutter_launcher_icons
    ```
 3. **İzinler:** `AndroidManifest.xml` içinde yalnızca kullanılan izinler tanımlı (POST_NOTIFICATIONS, INTERNET debug’ta).
-4. **Gizlilik politikası:** Google Play, bir gizlilik politikası URL’i isteyebilir; hosting edip Store listing’e ekleyin.
+4. **Gizlilik politikası:** Google Play, bir gizlilik politikası URL’i isteyebilir. Metin ve yayınlanabilir HTML: `docs/setup/gizlilik-politikasi.md`, `docs/setup/gizlilik-politikasi.html`. Play Console form alanları: `docs/setup/play-console-uygulama-formu.md`.
 
 ## Proje içi marka kullanımı
 

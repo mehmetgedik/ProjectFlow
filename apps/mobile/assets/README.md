@@ -1,23 +1,65 @@
 # OpenProject Mobile – Assets (ProjectFlow)
 
-## Logo kullanımı
+## Logo: SVG (tema uyumlu)
+
+Uygulama logoları **SVG** ile gösteriliyor; böylece her temada (açık/koyu) arka plan sorunu olmadan uyumlu görünür.
 
 | Asset | Açıklama | Kullanım yeri |
 |-------|----------|----------------|
-| **`brand/projectflow_mark.png`** | Sadece mark (ikon), **şeffaf arka plan**. Çerçeve yok; şeffaf kısımda ekranın arka planı görünür. | AppBar’daki logo butonu (Profil, Projeler, İş paketleri, Bildirimler, Dashboard). |
-| **`brand/projectflow_lockup.png`** | Mark + “ProjectFlow” metni. | Splash ekranı, Bağlan ekranı (Container içinde). |
-| **`icon/app_icon.png`** | Uygulama launcher ikonu (tam kare). | Genel uygulama ikonu. |
-| **`icon/app_icon_foreground.png`** | Adaptive ikon ön planı (Android 8+). | Android adaptive icon. |
-| **`icon/app_icon_legacy.png`** | Eski launcher’lar için tam ikon. | Eski Android launcher’lar. |
+| **`brand/projectflow_mark.svg`** | Sadece mark (ikon). **Arka plan yok (şeffaf).** | AppBar’daki logo butonu (Profil, Projeler, İş paketleri, Bildirimler, Dashboard). |
+| **`brand/projectflow_lockup.svg`** | Mark + “ProjectFlow” yazısı. **Arka plan yok (şeffaf).** | Splash ekranı, Login (Bağlan) ekranı. |
+| **`brand/projectflow_lockup_white.svg`** | Beyaz arka planlı lockup (yedek). | Gerekirse koyu zeminlerde kullanılabilir. |
 
-## Kurallar
+Mark ve lockup şu an **seffaf.svg** (şeffaf) ile dolduruldu; **beyaz.svg** `projectflow_lockup_white.svg` olarak yedekte. PNG yedekleri (`projectflow_mark.png`, `projectflow_lockup.png`) hâlâ asset listesinde.
 
-- **Uygulama yönetim / profil ekranında** (ve tüm AppBar’larda): Logo **çerçevesiz**; şeffaf kısımda arka plan rengi verilmez, mevcut arka plan görünür.
-- **Şeffaf logo** (`projectflow_mark.png`): Sadece mark; kare, şeffaf arka plan – AppBar ve in-app kullanım için.
-- **Beyaz arka planlı logo**: Gerekirse splash/connect kartı veya basılı materyaller için kullanılabilir; şu an lockup ayrı bir asset.
+---
 
-## Gerekli boyutlar
+## Senden istenen SVG’ler
 
-- **Mark (AppBar)**: Mevcut `projectflow_mark.png` tek dosya; Flutter `width`/`height` ile ölçeklenir (örn. 28dp). İsterseniz 1x, 2x, 3x için `projectflow_mark.png`, `2.0x/projectflow_mark.png` vb. eklenebilir.
-- **Launcher**: `flutter_launcher_icons` kullanılıyor; kaynak `app_icon_foreground.png` ve `app_icon_legacy.png`. Değiştirdikten sonra: `dart run flutter_launcher_icons`.
-- **Web**: `web/icons/` ve `web/favicon.png` – gerekirse aynı mark/lockup’tan türetilebilir.
+**Her türlü temaya uyumlu** logo için şu iki dosyayı **SVG** olarak sağlaman yeterli:
+
+1. **`projectflow_mark.svg`**  
+   - Sadece ikon (mor + turkuaz şekiller).  
+   - Arka plan olmasın (şeffaf).  
+   - İstersen yazı/metin renginin temaya göre değişmesi için SVG içinde `fill="currentColor"` kullan; uygulama tema rengini otomatik verir.
+
+2. **`projectflow_lockup.svg`**  
+   - İkon + “ProjectFlow” yazısı.  
+   - Arka plan olmasın (şeffaf).  
+   - Yazı için `fill="currentColor"` kullanırsan açık/koyu temada okunaklı olur.
+
+Dosyaları şuraye koy:  
+`apps/mobile/assets/brand/`  
+- `projectflow_mark.svg`  
+- `projectflow_lockup.svg`  
+
+Mevcut placeholder SVG’leri bu dosyalarla değiştir; uygulama aynı yolları kullanıyor.
+
+---
+
+## Diğer asset’ler (launcher – arka plan her zaman beyaz)
+
+Galeride görünen ikonun arka planı her zaman beyaz: Android `ic_launcher_background` = `#FFFFFF`, `adaptive_icon_background: "#FFFFFF"`. Kaynak PNG'ler beyaz logodan (beyaz.svg) üretilmeli.
+
+| Asset | Açıklama |
+|-------|----------|
+| **`icon/app_icon_legacy.png`** | Tam ikon, beyaz zemin (galeri). |
+| **`icon/app_icon_foreground.png`** | Adaptive ikon ön planı (Android 8+); arka plan beyaz. |
+
+**Beyaz SVG'den launcher PNG üretmek (Windows):**
+
+**A) Tek tık (önerilen):**  
+Proje kökündeki **`generate_launcher_icons.bat`** dosyasını çalıştır (çift tık veya CMD'den tam yol):
+```bat
+D:\MG\Project\Mobile\OpenProject\generate_launcher_icons.bat
+```
+Bittikten sonra: `cd D:\MG\Project\Mobile\OpenProject\apps\mobile` → `dart run flutter_launcher_icons`
+
+**B) Elle:** Önce **mutlaka proje köküne** geç (prompt `D:\MG\Project\Mobile\OpenProject>` olmalı):
+```bat
+cd /d D:\MG\Project\Mobile\OpenProject
+python tools\svg_to_launcher_icons.py
+```
+Sonra: `cd apps\mobile` → `dart run flutter_launcher_icons`
+
+Alternatif: beyaz.svg'yi 1024×1024 PNG olarak dışa aktarıp `apps/mobile/assets/icon/` altında `app_icon_legacy.png` ve `app_icon_foreground.png` olarak kaydet, sonra `dart run flutter_launcher_icons`.

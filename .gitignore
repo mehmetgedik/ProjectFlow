@@ -1,5 +1,6 @@
 # Kök seviye – hassas ve gereksiz dosyalar
 apps/mobile/android/key.properties
+apps/mobile/keystores/
 **/local.properties
 **/*.jks
 **/*.keystore

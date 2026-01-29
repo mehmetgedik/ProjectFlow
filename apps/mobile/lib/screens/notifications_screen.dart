@@ -7,6 +7,7 @@ import '../models/work_package.dart';
 import '../services/local_notification_service.dart';
 import '../state/auth_state.dart';
 import '../utils/app_logger.dart';
+import '../utils/error_messages.dart';
 import '../utils/haptic.dart';
 import '../widgets/letter_avatar.dart';
 import '../widgets/projectflow_logo_button.dart';
@@ -80,7 +81,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         setState(() => _wpCache = const {});
       }
     } catch (e) {
-      _error = e.toString();
+      _error = ErrorMessages.userFriendly(e);
       AppLogger.logError('Bildirimler yüklenirken hata oluştu', error: e);
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -105,7 +106,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         await _load();
       }
     } catch (e) {
-      setState(() => _error = e.toString());
+      setState(() => _error = ErrorMessages.userFriendly(e));
       AppLogger.logError('Bildirim okundu işaretlenirken hata oluştu', error: e);
     }
   }
@@ -120,7 +121,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       if (!mounted) return;
       await context.read<AuthState>().refreshUnreadNotificationCount();
     } catch (e) {
-      setState(() => _error = e.toString());
+      setState(() => _error = ErrorMessages.userFriendly(e));
       AppLogger.logError('Tümünü okundu yaparken hata oluştu', error: e);
     }
   }
@@ -145,7 +146,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         );
       } catch (e) {
         if (!mounted) return;
-        setState(() => _error = e.toString());
+        setState(() => _error = ErrorMessages.userFriendly(e));
         AppLogger.logError('Bildirime bağlı kayıt açılırken hata oluştu', error: e);
       }
     }
@@ -299,7 +300,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         title: const Text('Bildirimler'),
         actions: [
           const ProjectFlowLogoButton(),
-          // Sadece okunmayanlar / hepsini göster
+          // Liste filtresi: sadece okunmayanlar ↔ okunmuşlar dahil hepsi
           IconButton(
             onPressed: () {
               setState(() => _onlyUnread = !_onlyUnread);
@@ -309,9 +310,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               _onlyUnread ? Icons.mark_email_unread : Icons.mark_email_read,
               size: 20,
             ),
-            tooltip: _onlyUnread ? 'Okunmuşları da göster' : 'Sadece okunmayanlar',
+            tooltip: _onlyUnread
+                ? 'Şu an sadece okunmayanlar gösteriliyor. Tıklayınca okunmuş bildirimler de listelenir.'
+                : 'Şu an tüm bildirimler (okunmuş + okunmamış) gösteriliyor. Tıklayınca sadece okunmayanlar listelenir.',
           ),
-          // Proje filtresi: yalnızca aktif proje / tüm projeler
+          // Proje filtresi: tüm projeler ↔ sadece aktif proje
           IconButton(
             onPressed: () => setState(() => _onlyActiveProject = !_onlyActiveProject),
             icon: Icon(
@@ -319,15 +322,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               size: 20,
             ),
             tooltip: _onlyActiveProject
-                ? 'Tüm projeleri göster'
+                ? 'Şu an sadece aktif projenin bildirimleri gösteriliyor. Tıklayınca tüm projelerin bildirimleri listelenir.'
                 : (activeProjectName.isEmpty
-                    ? 'Aktif proje yok; tüm bildirimler gösteriliyor'
-                    : 'Sadece "$activeProjectName" projesinin bildirimlerini göster'),
+                    ? 'Aktif proje seçili değil; tüm bildirimler gösteriliyor.'
+                    : 'Şu an tüm projelerin bildirimleri gösteriliyor. Tıklayınca sadece "$activeProjectName" projesinin bildirimleri listelenir.'),
           ),
+          // Tüm bildirimleri okundu işaretle
           if (hasUnread)
-            TextButton(
+            IconButton(
               onPressed: _loading ? null : _markAllRead,
-              child: const Text('Tümünü okundu yap'),
+              icon: const Icon(Icons.done_all, size: 22),
+              tooltip: 'Tüm bildirimleri okundu olarak işaretle',
             ),
         ],
       ),

@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 
 import '../state/auth_state.dart';
+import '../utils/error_messages.dart';
 import '../utils/haptic.dart';
 import '../widgets/letter_avatar.dart';
 import 'connect_settings_screen.dart';
@@ -15,7 +16,7 @@ class ConnectScreen extends StatefulWidget {
 }
 
 class _ConnectScreenState extends State<ConnectScreen> {
-  final _instanceController = TextEditingController(text: 'https://openproject.uyumsoft.com');
+  final _instanceController = TextEditingController();
   final _apiKeyController = TextEditingController();
   final _instanceFocusNode = FocusNode();
   final _apiKeyFocusNode = FocusNode();
@@ -62,7 +63,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
           );
       LetterAvatar.clearFailedCache();
     } catch (e) {
-      setState(() => _error = e.toString());
+      setState(() => _error = ErrorMessages.userFriendly(e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -199,10 +200,18 @@ class _ConnectScreenState extends State<ConnectScreen> {
                                         prefixIcon: const Icon(Icons.link_rounded),
                                         suffixIcon: IconButton(
                                           icon: const Icon(Icons.mic_outlined),
-                                          onPressed: () =>
-                                              _instanceFocusNode.requestFocus(),
-                                          tooltip:
-                                              'Sesle yazmak için alana odaklan',
+                                          onPressed: () {
+                                            _instanceFocusNode.requestFocus();
+                                            if (mounted) {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text('Klavyede mikrofon ile sesli yazabilirsiniz.'),
+                                                  duration: Duration(seconds: 2),
+                                                ),
+                                              );
+                                            }
+                                          },
+                                          tooltip: 'Sesle yazmak için alana odaklan',
                                         ),
                                       ),
                                       keyboardType: TextInputType.url,
@@ -235,8 +244,17 @@ class _ConnectScreenState extends State<ConnectScreen> {
                                           children: [
                                             IconButton(
                                               icon: const Icon(Icons.mic_outlined),
-                                              onPressed: () =>
-                                                  _apiKeyFocusNode.requestFocus(),
+                                              onPressed: () {
+                                                _apiKeyFocusNode.requestFocus();
+                                                if (mounted) {
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    const SnackBar(
+                                                      content: Text('Klavyede mikrofon ile sesli yazabilirsiniz.'),
+                                                      duration: Duration(seconds: 2),
+                                                    ),
+                                                  );
+                                                }
+                                              },
                                               tooltip: 'Sesle yazmak için alana odaklan',
                                             ),
                                             IconButton(
@@ -330,6 +348,49 @@ class _ConnectScreenState extends State<ConnectScreen> {
                                             )
                                           : const Text('Bağlan'),
                                     ),
+                                    const SizedBox(height: 12),
+                                    TextButton.icon(
+                                      onPressed: (auth.storedInstanceBaseUrl != null &&
+                                                  auth.storedInstanceBaseUrl!.isNotEmpty) ||
+                                              (auth.storedApiKey != null &&
+                                                  auth.storedApiKey!.isNotEmpty)
+                                          ? () async {
+                                              mediumImpact();
+                                              final confirm = await showDialog<bool>(
+                                                context: context,
+                                                builder: (ctx) => AlertDialog(
+                                                  title: const Text('Saklanan ayarları sil'),
+                                                  content: const Text(
+                                                    'Cihazda saklanan instance adresi, API key ve aktif proje bilgisi silinecek. Devam etmek istiyor musun?',
+                                                  ),
+                                                  actions: [
+                                                    TextButton(
+                                                      onPressed: () =>
+                                                          Navigator.of(ctx).pop(false),
+                                                      child: const Text('İptal'),
+                                                    ),
+                                                    FilledButton(
+                                                      onPressed: () =>
+                                                          Navigator.of(ctx).pop(true),
+                                                      child: const Text('Sil'),
+                                                    ),
+                                                  ],
+                                                ),
+                                              );
+                                              if (!mounted || confirm != true) return;
+                                              await context.read<AuthState>().clearStoredSettings();
+                                              if (!mounted) return;
+                                              _instanceController.clear();
+                                              _apiKeyController.clear();
+                                              setState(() => _error = null);
+                                            }
+                                          : null,
+                                      icon: const Icon(Icons.delete_outline_rounded, size: 20),
+                                      label: const Text('Saklanan ayarları sil'),
+                                      style: TextButton.styleFrom(
+                                        foregroundColor: colorScheme.error,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -356,26 +417,14 @@ class _LogoSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = theme.brightness == Brightness.dark;
-    return Container(
+    return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        // Logo dışında kalan alan: koyu temada siyah, açık temada beyaz.
-        color: isDark ? Colors.black : Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: theme.colorScheme.shadow.withValues(alpha: 0.10),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
       child: Image.asset(
-        'assets/brand/projectflow_lockup.png',
+        'assets/icon/app_icon_transpara.png',
         width: 220,
         height: 120,
         fit: BoxFit.contain,
+        isAntiAlias: true,
       ),
     );
   }

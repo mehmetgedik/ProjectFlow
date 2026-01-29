@@ -5,10 +5,12 @@ import 'package:http/http.dart' as http;
 
 import '../models/project.dart';
 import '../models/saved_query.dart';
+import '../models/version.dart';
 import '../models/work_package.dart';
 import '../models/work_package_activity.dart';
 import '../models/time_entry.dart';
 import '../models/notification_item.dart';
+import '../models/week_day.dart';
 
 class OpenProjectClient {
   final Uri apiBase;
@@ -126,17 +128,21 @@ class OpenProjectClient {
       avatar = apiBase.origin + avatar;
     }
     // Uygulama her zaman API avatar endpoint'ini kullanır: /api/v3/users/{id}/avatar (web ile aynı; Basic auth kabul eder)
-    final id = data['id'];
-    if (id != null) {
+    final idObj = data['id'];
+    final idStr = idObj?.toString();
+    if (idStr != null && idStr.isNotEmpty) {
       final base = apiBase.toString().replaceAll(RegExp(r'/+$'), '');
-      avatar = '$base/users/${id.toString()}/avatar';
+      avatar = '$base/users/$idStr/avatar';
     } else if (avatar == null || avatar.isEmpty) {
       // id yoksa API'den gelen avatar (örn. Gravatar) kalsın
     }
+    final email = data['email']?.toString();
     return <String, String>{
+      if (idStr != null && idStr.isNotEmpty) 'id': idStr,
       if (name != null && name.isNotEmpty) 'name': name,
       if (login != null && login.isNotEmpty) 'login': login,
       if (avatar != null && avatar.isNotEmpty) 'avatar': avatar,
+      if (email != null && email.isNotEmpty) 'email': email,
       'firstName': first,
       'lastName': last,
     };
@@ -149,6 +155,19 @@ class OpenProjectClient {
     if (lastName != null) body['lastName'] = lastName;
     if (body.isEmpty) return;
     await patchJson('/users/me', body);
+  }
+
+  /// Work schedule: haftanın hangi günleri çalışma günü (1 = Pazartesi, 7 = Pazar).
+  /// API 404/403 dönerse boş liste veya varsayılan (Pzt–Cuma) kullanılabilir.
+  Future<List<WeekDay>> getWeekDays() async {
+    try {
+      final data = await getJson('/days/week');
+      final embedded = data['_embedded'] as Map<String, dynamic>?;
+      final elements = (embedded?['elements'] as List?) ?? const [];
+      return elements.whereType<Map<String, dynamic>>().map(WeekDay.fromJson).toList(growable: false);
+    } catch (_) {
+      return const [];
+    }
   }
 
   /// Sadece aktif projeleri getirir (arşivlenmiş/pasif projeler listelenmez).
@@ -170,8 +189,39 @@ class OpenProjectClient {
     return elements.whereType<Map>().map(Project.fromJson).toList(growable: false);
   }
 
+  /// Projedeki versiyonları (sprint / release) getirir. Açık sprint seçimi için kullanılır.
+  Future<List<Version>> getProjectVersions(String projectId) async {
+    if (projectId.isEmpty) return const [];
+    final data = await getJson('/projects/$projectId/versions');
+    final embedded = data['_embedded'] as Map<String, dynamic>?;
+    final elements = (embedded?['elements'] as List?) ?? const [];
+    return elements.whereType<Map<String, dynamic>>().map(Version.fromJson).toList(growable: false);
+  }
+
   Future<WorkPackage> getWorkPackage(String id) async {
     final data = await getJson('/work_packages/$id');
+    return WorkPackage.fromJson(data);
+  }
+
+  /// Yeni iş paketi oluşturur. projectId ve typeId zorunlu.
+  Future<WorkPackage> createWorkPackage({
+    required String projectId,
+    required String typeId,
+    required String subject,
+    String? description,
+  }) async {
+    if (subject.trim().isEmpty) throw Exception('Başlık zorunludur.');
+    final body = <String, dynamic>{
+      'subject': subject.trim(),
+      '_links': <String, dynamic>{
+        'project': {'href': '/api/v3/projects/$projectId'},
+        'type': {'href': '/api/v3/types/$typeId'},
+      },
+    };
+    if (description != null && description.trim().isNotEmpty) {
+      body['description'] = {'raw': description.trim()};
+    }
+    final data = await postJson('/work_packages', body);
     return WorkPackage.fromJson(data);
   }
 
@@ -574,6 +624,55 @@ class OpenProjectClient {
     );
   }
 
+  /// Zaman kayıtlarını tarih aralığına (ve isteğe bağlı kullanıcıya) göre getirir.
+  /// [userId] verilirse o kullanıcının kayıtları (yetki: view time entries / view own).
+  /// OpenProject API: spent_on <>d, user_id filtresi.
+  Future<List<TimeEntry>> getMyTimeEntries({
+    DateTime? from,
+    DateTime? to,
+    String? userId,
+  }) async {
+    final filters = <Map<String, dynamic>>[];
+    if (userId != null && userId.isNotEmpty) {
+      filters.add({
+        'user_id': {'operator': '=', 'values': [userId]},
+      });
+    }
+    if (from != null && to != null) {
+      final fromStr = from.toIso8601String().split('T').first;
+      final toStr = to.toIso8601String().split('T').first;
+      filters.add({
+        'spent_on': {
+          'operator': '<>d',
+          'values': [fromStr, toStr],
+        },
+      });
+    } else if (from != null) {
+      filters.add({
+        'spent_on': {
+          'operator': '>=',
+          'values': [from.toIso8601String().split('T').first],
+        },
+      });
+    } else if (to != null) {
+      filters.add({
+        'spent_on': {
+          'operator': '<=',
+          'values': [to.toIso8601String().split('T').first],
+        },
+      });
+    }
+    final query = <String, String>{
+      'pageSize': '500',
+      'sortBy': jsonEncode([['spent_on', 'desc']]),
+    };
+    if (filters.isNotEmpty) query['filters'] = jsonEncode(filters);
+    final data = await getJson('/time_entries', query: query);
+    final embedded = data['_embedded'] as Map<String, dynamic>?;
+    final elements = (embedded?['elements'] as List?) ?? const [];
+    return elements.whereType<Map>().map(TimeEntry.fromJson).toList(growable: false);
+  }
+
   /// Zaman kayıtları listesi. OpenProject API: entity_type + entity_id kullanılır (workPackage deprecated).
   Future<List<TimeEntry>> getWorkPackageTimeEntries(String workPackageId) async {
     final filters = <Map<String, dynamic>>[
@@ -623,31 +722,36 @@ class OpenProjectClient {
   }
 
   Future<List<NotificationItem>> getNotifications({bool onlyUnread = false}) async {
-    final filters = <Map<String, dynamic>>[];
+    final query = <String, String>{'pageSize': '100'};
     if (onlyUnread) {
-      filters.add({
-        'readIAN': {
-          'operator': '=',
-          // API dokümantasyonuna göre boolean değil, "t"/"f" stringleri bekleniyor.
-          // onlyUnread=true => readIAN == false => "f"
-          'values': ['f'],
-        },
-      });
-    }
-
-    final query = <String, String>{};
-    if (filters.isNotEmpty) {
+      final filters = <Map<String, dynamic>>[
+        {'readIAN': {'operator': '=', 'values': ['f']}},
+      ];
       query['filters'] = jsonEncode(filters);
     }
 
-    // Bildirim endpoint'i bazı kurulumlarda kapalı olabilir; 404 için daha anlaşılır mesaj döndür.
-    final uri = _resolve('/notifications', query: query.isEmpty ? null : query);
+    final uri = _resolve('/notifications', query: query);
     final res = await http.get(uri, headers: _headers());
     if (res.statusCode == 404) {
       throw Exception(
         'Bildirim API\'si bu OpenProject kurulumunda kullanılamıyor (HTTP 404). '
         'Sunucu tarafında bildirim özelliği devre dışı olabilir.',
       );
+    }
+    if (res.statusCode == 400) {
+      // Filtre bazı sunucularda geçersiz olabiliyor; filtre olmadan dene ve istemci tarafında filtrele.
+      if (onlyUnread) {
+        final fallbackUri = _resolve('/notifications', query: {'pageSize': '100'});
+        final fallbackRes = await http.get(fallbackUri, headers: _headers());
+        if (fallbackRes.statusCode == 200) {
+          final data = jsonDecode(fallbackRes.body) as Map<String, dynamic>;
+          final embedded = data['_embedded'] as Map<String, dynamic>?;
+          final elements = (embedded?['elements'] as List?) ?? const [];
+          final list = elements.whereType<Map>().map(NotificationItem.fromJson).toList(growable: false);
+          return list.where((n) => !n.read).toList(growable: false);
+        }
+      }
+      throw Exception('Bildirim listesi alınamadı (filtre sunucu tarafından kabul edilmedi).');
     }
     if (res.statusCode == 401 || res.statusCode == 403) {
       throw Exception('Yetkisiz erişim (HTTP ${res.statusCode}). API key ve yetkileri kontrol edin.');
@@ -679,12 +783,21 @@ class OpenProjectClient {
 
   Future<void> markNotificationRead(String id) async {
     final uri = _resolve('/notifications/$id/read_ian');
-    // Bu endpoint gövde istemese bile Content-Type bekliyor; boş JSON ile gönderiyoruz.
-    final res = await http.post(
+    final headers = _headers(jsonBody: true);
+    var res = await http.post(
       uri,
-      headers: _headers(jsonBody: true),
+      headers: headers,
       body: jsonEncode(<String, dynamic>{}),
     );
+    if (res.statusCode == 406) {
+      // Bazı sunucular POST read_ian yerine PATCH ile readIAN güncellemesi bekler.
+      final patchUri = _resolve('/notifications/$id');
+      res = await http.patch(
+        patchUri,
+        headers: headers,
+        body: jsonEncode(<String, dynamic>{'readIAN': true}),
+      );
+    }
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw Exception('Bildirim okundu olarak işaretlenemedi (HTTP ${res.statusCode}).');
     }
