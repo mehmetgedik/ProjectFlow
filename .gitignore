@@ -18,3 +18,30 @@ apps/mobile/android/captures/
 apps/mobile/android/app/debug/
 apps/mobile/android/app/profile/
 apps/mobile/android/app/release/
+
+# Gradle / build (genel)
+.gradle/
+build/
+
+# Log/OS
+*.log
+
+# Android Studio
+.externalNativeBuild/
+.cxx/
+*.aab
+*.apk
+output-metadata.json
+
+# IntelliJ
+*.iml
+.idea/
+misc.xml
+deploymentTargetDropDown.xml
+render.experimental.xml
+
+# Google Services (e.g. APIs or Firebase)
+google-services.json
+
+# Android Profiling
+*.hprof
