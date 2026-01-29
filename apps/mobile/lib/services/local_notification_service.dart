@@ -12,7 +12,7 @@ const int _kTimeTrackingReminderTodayId = 90;
 
 /// Mesai hatırlatması / test bildirimi id’leri: tıklanınca zaman takibi sayfasına gider.
 bool _isTimeTrackingNotificationId(int id) {
-  return id == 98 || id == 99 || (id >= _kTimeTrackingReminderIdBase && id <= _kTimeTrackingReminderIdBase + 6) || id == _kTimeTrackingReminderTodayId;
+  return (id >= _kTimeTrackingReminderIdBase && id <= _kTimeTrackingReminderIdBase + 6) || id == _kTimeTrackingReminderTodayId;
 }
 
 /// Verilen hafta günü (1=Pzt, 7=Paz) ve saatteki bir sonraki (veya aynı) oluşumu döndürür.
@@ -157,43 +157,6 @@ class LocalNotificationService {
     importance: Importance.high,
     priority: Priority.high,
   );
-
-  /// Test için: Aynı anda mesai hatırlatması kanalında bir bildirim gösterir (zamanlama yok).
-  Future<void> showTestNotificationNow() async {
-    if (!Platform.isAndroid) return;
-    await initialize();
-    const testId = 98;
-    await _plugin.show(
-      testId,
-      'ProjectFlow',
-      'Bu bir test bildirimidir. Mesai hatırlatması kanalı çalışıyor.',
-      const NotificationDetails(android: _timeTrackingReminderDetails),
-      payload: 'time_tracking',
-    );
-  }
-
-  /// Test için: 1 dakika sonra mesai hatırlatması kanalında bir bildirim planlar.
-  /// Inexact mod kullanılır; Android 12+ cihazlarda exact alarm izni olmadan da tetiklenir.
-  Future<void> scheduleTestReminderInOneMinute() async {
-    if (!Platform.isAndroid) return;
-    await initialize();
-    _ensureTimeZone();
-    await _setLocalTimezoneFromDevice();
-    const testId = 99;
-    final now = tz.TZDateTime.now(tz.local);
-    final inOneMinute = now.add(const Duration(minutes: 1));
-    await _plugin.zonedSchedule(
-      testId,
-      'ProjectFlow',
-      'Bu bir test bildirimidir. Mesai hatırlatması çalışıyor.',
-      inOneMinute,
-      const NotificationDetails(android: _timeTrackingReminderDetails),
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-      payload: 'time_tracking',
-    );
-  }
 
   /// Çalışma günlerinde mesai bitimine yakın zaman takibi hatırlatması planlar.
   /// [workingWeekdays]: OpenProject hafta günü 1–7 (1 = Pazartesi).

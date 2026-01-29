@@ -868,35 +868,6 @@ class _TimeTrackingReminderCardState extends State<_TimeTrackingReminderCard> {
             trailing: Text(endTimeStr),
             onTap: _enabled! ? _pickEndTime : null,
           ),
-          const Divider(height: 1),
-          ListTile(
-            title: const Text('Test bildirimi'),
-            subtitle: const Text('Şimdi göster veya 1 dakika sonra planla; hatırlatma kanalını doğrulayın'),
-            trailing: const Icon(Icons.notifications_active_outlined),
-            onTap: () async {
-              selectionClick();
-              await LocalNotificationService().showTestNotificationNow();
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Test bildirimi gösterildi. Gelmediyse bildirim izinlerini kontrol edin.')),
-                );
-              }
-            },
-          ),
-          ListTile(
-            title: const Text('1 dakika sonra test bildirimi planla'),
-            subtitle: const Text('Zamanlanmış bildirimin çalışıp çalışmadığını test edin'),
-            trailing: const Icon(Icons.schedule),
-            onTap: () async {
-              selectionClick();
-              await LocalNotificationService().scheduleTestReminderInOneMinute();
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('1 dakika sonra test bildirimi planlandı. Uygulamayı kapatıp bekleyebilirsiniz.')),
-                );
-              }
-            },
-          ),
         ],
       ),
     );
