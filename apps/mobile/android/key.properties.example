@@ -1,0 +1,14 @@
+## Copy this file to `android/key.properties` (DO NOT COMMIT) and fill values.
+##
+## storeFile can be an absolute path or relative to the `android/` folder.
+## Example:
+## storeFile=../keystores/projectflow-upload.jks
+## storePassword=********
+## keyAlias=upload
+## keyPassword=********
+
+storeFile=
+storePassword=
+keyAlias=
+keyPassword=
+
