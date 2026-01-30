@@ -22,8 +22,8 @@
 | 2.2 | applicationId | ☑ OK | **com.openproject.openproject_mobile** (build.gradle.kts). |
 | 2.3 | Uygulama adı (cihazda) | ☑ OK | **ProjectFlow** (AndroidManifest android:label). |
 | 2.4 | Release imzalama | ☑ OK | build.gradle.kts: key.properties + signingConfigs.release; release build type release imzası kullanıyor. |
-| 2.5 | key.properties dosyası | ☑ OK | **Var** (apps/mobile/android/key.properties). |
-| 2.6 | Keystore dosyası | ☑ OK | **Var** (apps/mobile/keystores/projectflow-upload.jks). |
+| 2.5 | key.properties dosyası | ☑ OK | Yerelde bulunmalı (repoda olmamalı; .gitignore’da). |
+| 2.6 | Keystore dosyası | ☑ OK | Yerelde bulunmalı (repoda olmamalı; keystores/ .gitignore’da). |
 
 ---
 

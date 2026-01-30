@@ -16,8 +16,15 @@ apps/mobile/Process
 apps/mobile/Run
 apps/mobile/flutter
 
-# İsteğe bağlı: makineye özel emülatör scripti (path/AVD adı kişisel)
-# start-emulator.vbs
+# Makineye özel (path/AVD adı) – public repoda olmamalı
+start-emulator.vbs
+
+# İç analiz ve inceleme dokümanları – public repoda yayımlanmaz
+docs/analysis/
+docs/reviews/
+
+# Netlify için geçici klasör (tek dosya yükleme için kullanıldı)
+netlify-publish/
 
 # Flutter / build
 apps/mobile/.dart_tool/
