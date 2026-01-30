@@ -20,17 +20,21 @@ class ProjectFlowLogoButton extends StatelessWidget {
       showDuration: const Duration(seconds: 2),
       child: Material(
         type: MaterialType.transparency,
-        child: InkWell(
-          onTap: () => _goHome(context),
-          customBorder: const CircleBorder(),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Image.asset(
-              'assets/icon/app_icon_transpara.png',
-              width: size,
-              height: size,
-              fit: BoxFit.contain,
-              isAntiAlias: true,
+        child: Semantics(
+          label: 'Ana ekrana dön',
+          button: true,
+          child: InkWell(
+            onTap: () => _goHome(context),
+            customBorder: const CircleBorder(),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Image.asset(
+                'assets/icon/app_icon_transpara.png',
+                width: size,
+                height: size,
+                fit: BoxFit.contain,
+                isAntiAlias: true,
+              ),
             ),
           ),
         ),

@@ -1,58 +1,68 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../api/openproject_client.dart';
+import '../app_navigation.dart';
+import '../mixins/client_context_mixin.dart';
+import '../mixins/loading_error_mixin.dart';
 import '../models/notification_item.dart';
 import '../models/work_package.dart';
 import '../services/local_notification_service.dart';
 import '../state/auth_state.dart';
+import '../state/notification_prefs.dart';
 import '../utils/app_logger.dart';
+import '../utils/date_formatters.dart';
 import '../utils/error_messages.dart';
 import '../utils/haptic.dart';
+import '../widgets/async_content.dart';
 import '../widgets/letter_avatar.dart';
 import '../widgets/projectflow_logo_button.dart';
-import 'work_package_detail_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
-  const NotificationsScreen({super.key});
+  const NotificationsScreen({super.key, this.isInsideShell = false});
+
+  /// Alt navigasyon kabuğu içindeyse true (şu an AppBar değişmiyor).
+  final bool isInsideShell;
 
   @override
   State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
 
-class _NotificationsScreenState extends State<NotificationsScreen> {
-  bool _loading = true;
-  String? _error;
+class _NotificationsScreenState extends State<NotificationsScreen>
+    with ClientContextMixin<NotificationsScreen>, LoadingErrorMixin<NotificationsScreen> {
   /// Varsayılan: sadece okunmayanlar; zarf ikonu ile okunmuşlara da ulaşılır.
   bool _onlyUnread = true;
   bool _onlyActiveProject = false;
   List<NotificationItem> _items = const [];
   /// Bildirime konu iş paketleri (durum/tip chip'leri için). resourceId -> WorkPackage.
   Map<String, WorkPackage> _wpCache = const {};
+  /// Üstteki "OpenProject bildirim ayarları" bilgi banner'ı; tercih yüklenene kadar false, sonra kapatılmadıysa true.
+  bool _showSettingsInfoBanner = false;
 
   @override
   void initState() {
     super.initState();
+    loading = true;
     _load();
     _requestNotificationPermission();
+    _loadSettingsInfoBannerVisibility();
+  }
+
+  Future<void> _loadSettingsInfoBannerVisibility() async {
+    final dismissed = await NotificationPrefs.getNotificationSettingsInfoDismissed();
+    if (mounted) setState(() => _showSettingsInfoBanner = !dismissed);
   }
 
   Future<void> _requestNotificationPermission() async {
     await LocalNotificationService().requestPermission();
   }
 
-  OpenProjectClient? _client(BuildContext context) => context.read<AuthState>().client;
-
   Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final client = _client(context);
-      if (client == null) throw Exception('Oturum bulunamadı.');
-      _items = await client.getNotifications(onlyUnread: _onlyUnread);
+    await runLoad(() async {
+      final c = client;
+      if (c == null) throw Exception('Oturum bulunamadı.');
+      _items = await c.getNotifications(onlyUnread: _onlyUnread);
       _items.sort((a, b) {
         final ad = a.createdAt;
         final bd = b.createdAt;
@@ -69,24 +79,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           .toList(growable: false);
       if (wpIds.isNotEmpty && mounted) {
         try {
-          final wps = await client.getWorkPackagesByIds(wpIds);
+          final wps = await c.getWorkPackagesByIds(wpIds);
           if (mounted) {
             setState(() {
               _wpCache = {for (final wp in wps) wp.id: wp};
             });
           }
-        } catch (_) {
+        } catch (e) {
+          if (kDebugMode) AppLogger.logError('Bildirim iş paketleri önbelleği yüklenemedi', error: e);
           if (mounted) setState(() => _wpCache = const {});
         }
       } else {
         setState(() => _wpCache = const {});
       }
-    } catch (e) {
-      _error = ErrorMessages.userFriendly(e);
-      AppLogger.logError('Bildirimler yüklenirken hata oluştu', error: e);
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
+    }, onError: (e) => AppLogger.logError('Bildirimler yüklenirken hata oluştu', error: e));
   }
 
   List<NotificationItem> _visibleItems(BuildContext context) {
@@ -100,14 +106,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   Future<void> _toggleRead(NotificationItem item) async {
     try {
-      final client = _client(context);
-      if (client == null) throw Exception('Oturum bulunamadı.');
+      final c = client;
+      if (c == null) throw Exception('Oturum bulunamadı.');
       if (!item.read) {
-        await client.markNotificationRead(item.id);
+        await c.markNotificationRead(item.id);
         await _load();
       }
     } catch (e) {
-      setState(() => _error = ErrorMessages.userFriendly(e));
+      setState(() => error = ErrorMessages.userFriendly(e));
       AppLogger.logError('Bildirim okundu işaretlenirken hata oluştu', error: e);
     }
   }
@@ -115,14 +121,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   /// Tüm bildirimleri okundu yapar; sonra listeyi ve badge sayısını günceller.
   Future<void> _markAllRead() async {
     try {
-      final client = _client(context);
-      if (client == null) throw Exception('Oturum bulunamadı.');
-      await client.markAllNotificationsRead();
+      final c = client;
+      if (c == null) throw Exception('Oturum bulunamadı.');
+      await c.markAllNotificationsRead();
       await _load();
       if (!mounted) return;
       await context.read<AuthState>().refreshUnreadNotificationCount();
     } catch (e) {
-      setState(() => _error = ErrorMessages.userFriendly(e));
+      setState(() => error = ErrorMessages.userFriendly(e));
       AppLogger.logError('Tümünü okundu yaparken hata oluştu', error: e);
     }
   }
@@ -134,31 +140,22 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     if (href.contains('/work_packages/')) {
       final id = href.split('/').last;
       try {
-        final client = _client(context);
-        if (client == null) throw Exception('Oturum bulunamadı.');
-        final wp = await client.getWorkPackage(id);
+        final c = client;
+        if (c == null) throw Exception('Oturum bulunamadı.');
+        final wp = await c.getWorkPackage(id);
         if (!mounted) return;
         await _toggleRead(item);
+        if (!mounted) return;
         // İş detay ekranına git
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => WorkPackageDetailScreen(workPackage: wp),
-          ),
-        );
+        NavHelpers.toWorkPackageDetail(context, wp).then((_) {
+          if (mounted) _load();
+        });
       } catch (e) {
         if (!mounted) return;
-        setState(() => _error = ErrorMessages.userFriendly(e));
+        setState(() => error = ErrorMessages.userFriendly(e));
         AppLogger.logError('Bildirime bağlı kayıt açılırken hata oluştu', error: e);
       }
     }
-  }
-
-  String _formatDateTime(DateTime? dt) {
-    if (dt == null) return '';
-    final d = dt.toLocal();
-    final date = '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year}';
-    final time = '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
-    return '$date $time';
   }
 
   /// Web'deki gibi reason'ı kullanıcı dostu metne çevirir (API: mentioned, assigned, dateAlert, vb.).
@@ -212,7 +209,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return (theme.colorScheme.tertiaryContainer, theme.colorScheme.onTertiaryContainer, Icons.play_arrow);
     }
     if (s.contains('bekle') || s.contains('on hold') || s.contains('pending')) {
-      return (theme.colorScheme.surfaceVariant, theme.colorScheme.onSurfaceVariant, Icons.pause_circle_filled);
+      return (theme.colorScheme.surfaceContainerHighest, theme.colorScheme.onSurfaceVariant, Icons.pause_circle_filled);
     }
     if (s.contains('tamam') || s.contains('closed') || s.contains('done') || s.contains('çözüldü')) {
       return (theme.colorScheme.secondaryContainer, theme.colorScheme.onSecondaryContainer, Icons.check_circle);
@@ -239,7 +236,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     if (t.contains('milestone') || t.contains('kilometre')) {
       return (theme.colorScheme.primaryContainer, theme.colorScheme.onPrimaryContainer, Icons.flag);
     }
-    return (theme.colorScheme.surfaceVariant, theme.colorScheme.onSurfaceVariant, Icons.label);
+    return (theme.colorScheme.surfaceContainerHighest, theme.colorScheme.onSurfaceVariant, Icons.label);
   }
 
   Widget _buildStatusChip(BuildContext context, String status) {
@@ -288,14 +285,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
-  /// OpenProject e-posta ile mobil bildirim eşleşmesi hakkında bilgi ve ayar linki.
+  /// OpenProject e-posta ile mobil bildirim eşleşmesi hakkında bilgi ve ayar linki. Bir kez kapatılınca tekrar gösterilmez.
   Widget _buildNotificationSettingsInfo(BuildContext context, AuthState auth) {
     final theme = Theme.of(context);
     final settingsUrl = auth.instanceDisplayUrl != null
         ? '${auth.instanceDisplayUrl!.replaceAll(RegExp(r'/+$'), '')}/my/account'
         : null;
     return Material(
-      color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Column(
@@ -316,6 +313,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 20),
+                  onPressed: () async {
+                    await NotificationPrefs.setNotificationSettingsInfoDismissed(true);
+                    if (mounted) setState(() => _showSettingsInfoBanner = false);
+                  },
+                  tooltip: 'Bilgi banner\'ını kapat',
                 ),
               ],
             ),
@@ -372,62 +377,74 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               setState(() => _onlyUnread = !_onlyUnread);
               _load();
             },
+            tooltip: _onlyUnread ? 'Tüm bildirimleri göster' : 'Sadece okunmamışları göster',
             icon: Icon(
               _onlyUnread ? Icons.mark_email_unread : Icons.mark_email_read,
               size: 20,
             ),
-            tooltip: _onlyUnread
-                ? 'Şu an sadece okunmayanlar gösteriliyor. Tıklayınca okunmuş bildirimler de listelenir.'
-                : 'Şu an tüm bildirimler (okunmuş + okunmamış) gösteriliyor. Tıklayınca sadece okunmayanlar listelenir.',
           ),
           // Proje filtresi: tüm projeler ↔ sadece aktif proje
           IconButton(
             onPressed: () => setState(() => _onlyActiveProject = !_onlyActiveProject),
+            tooltip: _onlyActiveProject ? 'Tüm projelerdeki bildirimler' : 'Sadece aktif projedeki bildirimler',
             icon: Icon(
               _onlyActiveProject ? Icons.filter_alt : Icons.filter_alt_outlined,
               size: 20,
             ),
-            tooltip: _onlyActiveProject
-                ? 'Şu an sadece aktif projenin bildirimleri gösteriliyor. Tıklayınca tüm projelerin bildirimleri listelenir.'
-                : (activeProjectName.isEmpty
-                    ? 'Aktif proje seçili değil; tüm bildirimler gösteriliyor.'
-                    : 'Şu an tüm projelerin bildirimleri gösteriliyor. Tıklayınca sadece "$activeProjectName" projesinin bildirimleri listelenir.'),
           ),
           // Tüm bildirimleri okundu işaretle
           if (hasUnread)
             IconButton(
-              onPressed: _loading ? null : _markAllRead,
+              onPressed: loading ? null : _markAllRead,
               icon: const Icon(Icons.done_all, size: 22),
               tooltip: 'Tüm bildirimleri okundu olarak işaretle',
             ),
         ],
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(_error!),
-                        const SizedBox(height: 12),
-                        FilledButton(
-                          onPressed: _load,
-                          child: const Text('Tekrar dene'),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              : Column(
+      body: AsyncContent(
+        loading: loading,
+        error: error,
+        onRetry: _load,
+        child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _buildNotificationSettingsInfo(context, auth),
+                        if (_showSettingsInfoBanner) _buildNotificationSettingsInfo(context, auth),
                         if (items.isEmpty)
-                          const Expanded(
-                            child: Center(child: Text('Gösterilecek bildirim yok.')),
+                          Expanded(
+                            child: Semantics(
+                              label: 'Liste boş. Gösterilecek bildirim yok.',
+                              child: Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.notifications_none_outlined,
+                                        size: 48,
+                                        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Text(
+                                        'Gösterilecek bildirim yok.',
+                                        style: theme.textTheme.bodyMedium?.copyWith(
+                                          color: theme.colorScheme.onSurfaceVariant,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Bildirimler OpenProject\'teki işlemlere göre burada listelenir.',
+                                        style: theme.textTheme.bodySmall?.copyWith(
+                                          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
                           )
                         else
                           Expanded(
@@ -435,8 +452,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                             onRefresh: _load,
                             child: ListView.separated(
                               physics: const AlwaysScrollableScrollPhysics(),
+                              cacheExtent: 300,
                               itemCount: items.length,
-                              separatorBuilder: (_, __) => const Divider(height: 1),
+                              separatorBuilder: (_, _) => const Divider(height: 1),
                               itemBuilder: (context, index) {
                                 final n = items[index];
                                 final isUnread = !n.read;
@@ -449,7 +467,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                     : null;
                                 return Material(
                                   color: isUnread
-                                      ? theme.colorScheme.primaryContainer.withOpacity(0.25)
+                                      ? theme.colorScheme.primaryContainer.withValues(alpha: 0.25)
                                       : null,
                                   child: InkWell(
                                     onTap: () {
@@ -543,7 +561,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                           Padding(
                                             padding: const EdgeInsets.only(top: 2),
                                             child: Text(
-                                              _formatDateTime(n.createdAt),
+                                              DateFormatters.formatDateTime(n.createdAt),
                                               style: theme.textTheme.labelSmall?.copyWith(
                                                 color: theme.colorScheme.outline,
                                               ),
@@ -578,6 +596,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         ),
                       ],
                     ),
+        ),
     );
   }
 }

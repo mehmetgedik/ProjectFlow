@@ -1,16 +1,41 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../api/openproject_client.dart';
+import '../utils/app_logger.dart';
+import '../mixins/client_context_mixin.dart';
 import '../models/project.dart';
 import '../models/version.dart';
 import '../models/work_package.dart';
 import '../state/auth_state.dart';
 import '../utils/error_messages.dart';
 import '../utils/haptic.dart';
+import '../constants/app_strings.dart';
+import '../utils/snackbar_helpers.dart';
+import '../widgets/async_content.dart';
 import '../widgets/letter_avatar.dart';
 import '../widgets/projectflow_logo_button.dart';
+import '../widgets/small_loading_indicator.dart';
 import 'work_package_detail_screen.dart';
+
+/// Web/API’den gelen hex rengi (örn. #3997AD) Color’a çevirir.
+Color? _colorFromHex(String? hex) {
+  if (hex == null || hex.isEmpty) return null;
+  String h = hex.startsWith('#') ? hex.substring(1) : hex;
+  if (h.length == 6) h = 'FF$h';
+  if (h.length != 8) return null;
+  final n = int.tryParse(h, radix: 16);
+  return n != null ? Color(n) : null;
+}
+
+/// Arka plan rengine göre okunabilir metin rengi (beyaz veya siyah).
+Color _contrastOn(Color bg) {
+  final luminance = bg.computeLuminance();
+  return luminance > 0.4 ? const Color(0xFF000000) : const Color(0xFFFFFFFF);
+}
 
 /// Yeni iş paketi oluşturma ekranı. Web formundaki alanlar: proje, tip, başlık, açıklama,
 /// atanan, öncelik, durum, üst iş, versiyon, başlangıç/bitiş tarihi. Sesle giriş aktif.
@@ -21,7 +46,7 @@ class CreateWorkPackageScreen extends StatefulWidget {
   State<CreateWorkPackageScreen> createState() => _CreateWorkPackageScreenState();
 }
 
-class _CreateWorkPackageScreenState extends State<CreateWorkPackageScreen> {
+class _CreateWorkPackageScreenState extends State<CreateWorkPackageScreen> with ClientContextMixin<CreateWorkPackageScreen> {
   final _formKey = GlobalKey<FormState>();
   final _subjectController = TextEditingController();
   final _descriptionController = TextEditingController();
@@ -46,10 +71,30 @@ class _CreateWorkPackageScreenState extends State<CreateWorkPackageScreen> {
   String? _selectedVersionId;
   DateTime? _startDate;
   DateTime? _dueDate;
+  WorkPackage? _selectedParent;
 
-  OpenProjectClient? _client(BuildContext context) => context.read<AuthState>().client;
 
-  /// Durum için renk ve ikon (iş detay ekranı ile tutarlı).
+  /// Durum: API’deki color (web ayarları) varsa onu kullanır, yoksa isim bazlı fallback.
+  (Color bg, Color fg, IconData icon) _statusVisualsFromMap(BuildContext context, Map<String, String> s) {
+    final name = s['name'] ?? s['id'] ?? '';
+    final apiColor = _colorFromHex(s['color']);
+    if (apiColor != null) {
+      return (apiColor, _contrastOn(apiColor), _statusIconByName(name));
+    }
+    return _statusVisuals(context, name);
+  }
+
+  static IconData _statusIconByName(String status) {
+    final s = status.toLowerCase();
+    if (s.contains('yeni') || s.contains('new')) return Icons.fiber_new_rounded;
+    if (s.contains('devam') || s.contains('progress') || s.contains('in progress')) return Icons.play_arrow_rounded;
+    if (s.contains('bekle') || s.contains('on hold') || s.contains('pending')) return Icons.pause_circle_filled_rounded;
+    if (s.contains('tamam') || s.contains('closed') || s.contains('done') || s.contains('çözüldü')) return Icons.check_circle_rounded;
+    if (s.contains('iptal') || s.contains('cancel')) return Icons.cancel_rounded;
+    return Icons.adjust_rounded;
+  }
+
+  /// Durum için renk ve ikon (API rengi yoksa fallback).
   (Color bg, Color fg, IconData icon) _statusVisuals(BuildContext context, String status) {
     final theme = Theme.of(context);
     final s = status.toLowerCase();
@@ -60,7 +105,7 @@ class _CreateWorkPackageScreenState extends State<CreateWorkPackageScreen> {
       return (theme.colorScheme.tertiaryContainer, theme.colorScheme.onTertiaryContainer, Icons.play_arrow_rounded);
     }
     if (s.contains('bekle') || s.contains('on hold') || s.contains('pending')) {
-      return (theme.colorScheme.surfaceVariant, theme.colorScheme.onSurfaceVariant, Icons.pause_circle_filled_rounded);
+      return (theme.colorScheme.surfaceContainerHighest, theme.colorScheme.onSurfaceVariant, Icons.pause_circle_filled_rounded);
     }
     if (s.contains('tamam') || s.contains('closed') || s.contains('done') || s.contains('çözüldü')) {
       return (theme.colorScheme.secondaryContainer, theme.colorScheme.onSecondaryContainer, Icons.check_circle_rounded);
@@ -68,7 +113,26 @@ class _CreateWorkPackageScreenState extends State<CreateWorkPackageScreen> {
     if (s.contains('iptal') || s.contains('cancel')) {
       return (theme.colorScheme.errorContainer, theme.colorScheme.onErrorContainer, Icons.cancel_rounded);
     }
-    return (theme.colorScheme.primaryContainer, theme.colorScheme.onPrimaryContainer, Icons.adjust_rounded);
+    return (theme.colorScheme.primaryContainer, theme.colorScheme.onPrimaryContainer, _statusIconByName(status));
+  }
+
+  /// İş tipi: API’deki color (web ayarları) varsa onu kullanır, yoksa isim bazlı fallback.
+  (Color bg, Color fg, IconData icon) _typeVisualsFromMap(BuildContext context, Map<String, String> t) {
+    final name = t['name'] ?? t['id'] ?? '';
+    final apiColor = _colorFromHex(t['color']);
+    if (apiColor != null) {
+      return (apiColor, _contrastOn(apiColor), _typeIconByName(name));
+    }
+    return _typeVisuals(context, name);
+  }
+
+  static IconData _typeIconByName(String type) {
+    final t = type.toLowerCase();
+    if (t.contains('bug') || t.contains('hata')) return Icons.bug_report_rounded;
+    if (t.contains('task') || t.contains('görev')) return Icons.checklist_rounded;
+    if (t.contains('feature') || t.contains('özellik')) return Icons.auto_awesome_rounded;
+    if (t.contains('milestone') || t.contains('kilometre')) return Icons.flag_rounded;
+    return Icons.label_rounded;
   }
 
   /// Öncelik için renk ve ikon.
@@ -82,28 +146,15 @@ class _CreateWorkPackageScreenState extends State<CreateWorkPackageScreen> {
       return (theme.colorScheme.tertiaryContainer, theme.colorScheme.onTertiaryContainer, Icons.remove_circle_outline_rounded);
     }
     if (p.contains('düşük') || p.contains('low')) {
-      return (theme.colorScheme.surfaceVariant, theme.colorScheme.onSurfaceVariant, Icons.low_priority_rounded);
+      return (theme.colorScheme.surfaceContainerHighest, theme.colorScheme.onSurfaceVariant, Icons.low_priority_rounded);
     }
-    return (theme.colorScheme.surfaceVariant, theme.colorScheme.onSurfaceVariant, Icons.flag_rounded);
+    return (theme.colorScheme.surfaceContainerHighest, theme.colorScheme.onSurfaceVariant, Icons.flag_rounded);
   }
 
-  /// İş tipi için renk ve ikon.
+  /// İş tipi için renk ve ikon (API rengi yoksa fallback).
   (Color bg, Color fg, IconData icon) _typeVisuals(BuildContext context, String type) {
     final theme = Theme.of(context);
-    final t = type.toLowerCase();
-    if (t.contains('bug') || t.contains('hata')) {
-      return (theme.colorScheme.errorContainer, theme.colorScheme.onErrorContainer, Icons.bug_report_rounded);
-    }
-    if (t.contains('task') || t.contains('görev')) {
-      return (theme.colorScheme.secondaryContainer, theme.colorScheme.onSecondaryContainer, Icons.checklist_rounded);
-    }
-    if (t.contains('feature') || t.contains('özellik')) {
-      return (theme.colorScheme.tertiaryContainer, theme.colorScheme.onTertiaryContainer, Icons.auto_awesome_rounded);
-    }
-    if (t.contains('milestone') || t.contains('kilometre')) {
-      return (theme.colorScheme.primaryContainer, theme.colorScheme.onPrimaryContainer, Icons.flag_rounded);
-    }
-    return (theme.colorScheme.surfaceVariant, theme.colorScheme.onSurfaceVariant, Icons.label_rounded);
+    return (theme.colorScheme.surfaceContainerHighest, theme.colorScheme.onSurfaceVariant, _typeIconByName(type));
   }
 
   /// Atanan için avatar URL (instance API base + users/id/avatar).
@@ -129,12 +180,12 @@ class _CreateWorkPackageScreenState extends State<CreateWorkPackageScreen> {
       _selectedVersionId = null;
     });
     try {
-      final client = _client(context);
-      if (client == null) throw Exception('Oturum bulunamadı.');
-      _projects = await client.getProjects();
-      final statuses = await client.getStatuses();
-      final priorities = await client.getPriorities();
+      final c = client;
+      if (c == null) throw Exception('Oturum bulunamadı.');
       final auth = context.read<AuthState>();
+      _projects = await c.getProjects();
+      final statuses = await c.getStatuses();
+      final priorities = await c.getPriorities();
       Project? preSelect;
       if (_projects.isNotEmpty && auth.activeProject != null) {
         final match = _projects.where((p) => p.id == auth.activeProject!.id).toList();
@@ -164,12 +215,12 @@ class _CreateWorkPackageScreenState extends State<CreateWorkPackageScreen> {
   }
 
   Future<void> _loadProjectDependent(String projectId) async {
-    final client = _client(context);
-    if (client == null) return;
+    final c = client;
+    if (c == null) return;
     try {
-      final types = await client.getProjectTypes(projectId);
-      final members = await client.getProjectMembers(projectId);
-      final versions = await client.getProjectVersions(projectId);
+      final types = await c.getProjectTypes(projectId);
+      final members = await c.getProjectMembers(projectId);
+      final versions = await c.getProjectVersions(projectId);
       if (mounted) {
         setState(() {
           _types = types;
@@ -180,7 +231,8 @@ class _CreateWorkPackageScreenState extends State<CreateWorkPackageScreen> {
           _selectedVersionId = null;
         });
       }
-    } catch (_) {
+    } catch (e) {
+      if (kDebugMode) AppLogger.logError('Proje tipleri/üyeler/versiyonlar yüklenemedi', error: e);
       if (mounted) {
         setState(() {
           _types = const [];
@@ -193,12 +245,7 @@ class _CreateWorkPackageScreenState extends State<CreateWorkPackageScreen> {
 
   void _showVoiceHint() {
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Klavyede mikrofon ile sesli yazabilirsiniz.'),
-          duration: Duration(seconds: 2),
-        ),
-      );
+      showAppSnackBar(context, 'Klavyede mikrofon ile sesli yazabilirsiniz.');
     }
   }
 
@@ -212,14 +259,17 @@ class _CreateWorkPackageScreenState extends State<CreateWorkPackageScreen> {
     );
     if (picked != null && mounted) {
       setState(() {
-        if (isStart) _startDate = picked;
-        else _dueDate = picked;
+        if (isStart) {
+          _startDate = picked;
+        } else {
+          _dueDate = picked;
+        }
       });
     }
   }
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate() || _saving) return;
+    if (_formKey.currentState?.validate() != true || _saving) return;
     final project = _selectedProject;
     final typeId = _selectedTypeId;
     if (project == null || typeId == null || typeId.isEmpty) {
@@ -231,10 +281,10 @@ class _CreateWorkPackageScreenState extends State<CreateWorkPackageScreen> {
       _error = null;
     });
     try {
-      final client = _client(context);
-      if (client == null) throw Exception('Oturum bulunamadı.');
-      final parentId = _parentIdController.text.trim();
-      final wp = await client.createWorkPackage(
+      final c = client;
+      if (c == null) throw Exception('Oturum bulunamadı.');
+      final parentId = _selectedParent?.id ?? _parentIdController.text.trim();
+      final wp = await c.createWorkPackage(
         projectId: project.id,
         typeId: typeId,
         subject: _subjectController.text.trim(),
@@ -252,9 +302,7 @@ class _CreateWorkPackageScreenState extends State<CreateWorkPackageScreen> {
       if (mounted) {
         mediumImpact();
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('İş paketi oluşturuldu.')),
-        );
+        showAppSnackBar(context, 'İş paketi oluşturuldu.');
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (_) => WorkPackageDetailScreen(workPackage: wp),
@@ -289,59 +337,61 @@ class _CreateWorkPackageScreenState extends State<CreateWorkPackageScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Yeni iş paketi'),
         actions: const [ProjectFlowLogoButton()],
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null && _projects.isEmpty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(_error!),
-                        const SizedBox(height: 16),
-                        FilledButton(
-                          onPressed: _loadInitial,
-                          child: const Text('Tekrar dene'),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              : Builder(
+      body: AsyncContent(
+        loading: _loading,
+        error: _error != null && _projects.isEmpty ? _error : null,
+        onRetry: _loadInitial,
+        child: Builder(
                   builder: (context) {
                     final theme = Theme.of(context);
                     final auth = context.watch<AuthState>();
-                    return SingleChildScrollView(
-                      padding: const EdgeInsets.all(24),
-                      child: Form(
-                        key: _formKey,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            DropdownButtonFormField<Project>(
-                              value: _selectedProject,
-                              decoration: const InputDecoration(
+                    return CustomScrollView(
+                      slivers: [
+                        SliverAppBar(
+                          title: const Text('Yeni iş paketi'),
+                          actions: const [ProjectFlowLogoButton()],
+                          floating: true,
+                          snap: true,
+                        ),
+                        SliverPadding(
+                          padding: const EdgeInsets.all(24),
+                          sliver: SliverToBoxAdapter(
+                            child: Form(
+                              key: _formKey,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  DropdownButtonFormField<Project>(
+                              initialValue: _selectedProject,
+                              decoration: InputDecoration(
                                 labelText: 'Proje',
                                 prefixIcon: Icon(Icons.folder_outlined),
-                                border: OutlineInputBorder(),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                               ),
                               items: _projects
                                   .map((p) => DropdownMenuItem(
                                         value: p,
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.folder_rounded, size: 20, color: theme.colorScheme.primary),
-                                            const SizedBox(width: 12),
-                                            Expanded(child: Text(p.name)),
-                                          ],
+                                        child: LayoutBuilder(
+                                          builder: (context, constraints) {
+                                            final w = constraints.maxWidth.isFinite && constraints.maxWidth > 0
+                                                ? constraints.maxWidth
+                                                : 250.0;
+                                            return SizedBox(
+                                              width: w,
+                                              child: Row(
+                                                children: [
+                                                  Icon(Icons.folder_rounded, size: 20, color: theme.colorScheme.primary),
+                                                  const SizedBox(width: 12),
+                                                  Expanded(child: Text(p.name, overflow: TextOverflow.ellipsis)),
+                                                ],
+                                              ),
+                                            );
+                                          },
                                         ),
                                       ))
                                   .toList(),
@@ -355,18 +405,19 @@ class _CreateWorkPackageScreenState extends State<CreateWorkPackageScreen> {
                             ),
                             const SizedBox(height: 16),
                             DropdownButtonFormField<String>(
-                              value: _selectedTypeId,
-                              decoration: const InputDecoration(
+                              initialValue: _selectedTypeId,
+                              decoration: InputDecoration(
                                 labelText: 'İş tipi',
-                                border: OutlineInputBorder(),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                               ),
                               items: _types
                                   .map((t) {
                                     final name = t['name'] ?? t['id'] ?? '';
-                                    final (bg, fg, icon) = _typeVisuals(context, name);
+                                    final (bg, fg, icon) = _typeVisualsFromMap(context, t);
                                     return DropdownMenuItem<String>(
                                       value: t['id'],
                                       child: Row(
+                                        mainAxisSize: MainAxisSize.min,
                                         children: [
                                           Container(
                                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -379,7 +430,7 @@ class _CreateWorkPackageScreenState extends State<CreateWorkPackageScreen> {
                                               children: [
                                                 Icon(icon, size: 18, color: fg),
                                                 const SizedBox(width: 6),
-                                                Text(name, style: TextStyle(color: fg, fontSize: 13)),
+                                                Text(name, style: theme.textTheme.bodySmall?.copyWith(color: fg)),
                                               ],
                                             ),
                                           ),
@@ -400,7 +451,7 @@ class _CreateWorkPackageScreenState extends State<CreateWorkPackageScreen> {
                                 labelText: 'Başlık',
                                 hintText: 'İş paketi başlığı',
                                 prefixIcon: const Icon(Icons.title_rounded),
-                                border: const OutlineInputBorder(),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                                 suffixIcon: IconButton(
                                   icon: const Icon(Icons.mic_outlined),
                                   onPressed: () {
@@ -410,6 +461,7 @@ class _CreateWorkPackageScreenState extends State<CreateWorkPackageScreen> {
                                   tooltip: 'Sesle yazmak için alana odaklan',
                                 ),
                               ),
+                              autofillHints: const [AutofillHints.name],
                               textCapitalization: TextCapitalization.sentences,
                               maxLength: 255,
                               validator: (v) {
@@ -424,7 +476,7 @@ class _CreateWorkPackageScreenState extends State<CreateWorkPackageScreen> {
                               decoration: InputDecoration(
                                 labelText: 'Açıklama (isteğe bağlı)',
                                 prefixIcon: const Icon(Icons.notes_rounded),
-                                border: const OutlineInputBorder(),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                                 alignLabelWithHint: true,
                                 suffixIcon: IconButton(
                                   icon: const Icon(Icons.mic_outlined),
@@ -440,21 +492,26 @@ class _CreateWorkPackageScreenState extends State<CreateWorkPackageScreen> {
                             ),
                             const SizedBox(height: 16),
                             DropdownButtonFormField<String>(
-                              value: _selectedAssigneeId == null || _selectedAssigneeId!.isEmpty
+                              initialValue: _selectedAssigneeId == null || _selectedAssigneeId!.isEmpty
                                   ? null
                                   : _selectedAssigneeId,
-                              decoration: const InputDecoration(
+                              decoration: InputDecoration(
                                 labelText: 'Atanan',
-                                border: OutlineInputBorder(),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                               ),
                               items: [
-                                const DropdownMenuItem<String>(
+                                DropdownMenuItem<String>(
                                   value: null,
                                   child: Row(
+                                    mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Icon(Icons.person_off_outlined, size: 22, color: Colors.grey),
-                                      SizedBox(width: 12),
-                                      Text('— Atanmamış'),
+                                      LetterAvatar(
+                                        displayName: 'Atanmamış',
+                                        imageUrl: null,
+                                        size: 28,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      const Text('— Atanmamış'),
                                     ],
                                   ),
                                 ),
@@ -465,17 +522,27 @@ class _CreateWorkPackageScreenState extends State<CreateWorkPackageScreen> {
                                   final headers = auth.authHeadersForInstanceImages;
                                   return DropdownMenuItem<String>(
                                     value: id,
-                                    child: Row(
-                                      children: [
-                                        LetterAvatar(
-                                          displayName: name,
-                                          imageUrl: avatarUrl,
-                                          imageHeaders: headers,
-                                          size: 28,
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(child: Text(name)),
-                                      ],
+                                    child: LayoutBuilder(
+                                      builder: (context, constraints) {
+                                        final w = constraints.maxWidth.isFinite && constraints.maxWidth > 0
+                                            ? constraints.maxWidth
+                                            : 250.0;
+                                        return SizedBox(
+                                          width: w,
+                                          child: Row(
+                                            children: [
+                                              LetterAvatar(
+                                                displayName: name,
+                                                imageUrl: avatarUrl,
+                                                imageHeaders: headers,
+                                                size: 28,
+                                              ),
+                                              const SizedBox(width: 12),
+                                              Expanded(child: Text(name, overflow: TextOverflow.ellipsis)),
+                                            ],
+                                          ),
+                                        );
+                                      },
                                     ),
                                   );
                                 }),
@@ -484,10 +551,10 @@ class _CreateWorkPackageScreenState extends State<CreateWorkPackageScreen> {
                             ),
                             const SizedBox(height: 16),
                             DropdownButtonFormField<String>(
-                              value: _selectedPriorityId,
-                              decoration: const InputDecoration(
+                              initialValue: _selectedPriorityId,
+                              decoration: InputDecoration(
                                 labelText: 'Öncelik',
-                                border: OutlineInputBorder(),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                               ),
                               items: _priorities
                                   .map((p) {
@@ -496,6 +563,7 @@ class _CreateWorkPackageScreenState extends State<CreateWorkPackageScreen> {
                                     return DropdownMenuItem<String>(
                                       value: p['id'],
                                       child: Row(
+                                        mainAxisSize: MainAxisSize.min,
                                         children: [
                                           Container(
                                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -508,7 +576,7 @@ class _CreateWorkPackageScreenState extends State<CreateWorkPackageScreen> {
                                               children: [
                                                 Icon(icon, size: 18, color: fg),
                                                 const SizedBox(width: 6),
-                                                Text(name, style: TextStyle(color: fg, fontSize: 13)),
+                                                Text(name, style: theme.textTheme.bodySmall?.copyWith(color: fg)),
                                               ],
                                             ),
                                           ),
@@ -521,18 +589,19 @@ class _CreateWorkPackageScreenState extends State<CreateWorkPackageScreen> {
                             ),
                             const SizedBox(height: 16),
                             DropdownButtonFormField<String>(
-                              value: _selectedStatusId,
-                              decoration: const InputDecoration(
+                              initialValue: _selectedStatusId,
+                              decoration: InputDecoration(
                                 labelText: 'Durum',
-                                border: OutlineInputBorder(),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                               ),
                               items: _statuses
                                   .map((s) {
                                     final name = s['name'] ?? s['id'] ?? '';
-                                    final (bg, fg, icon) = _statusVisuals(context, name);
+                                    final (bg, fg, icon) = _statusVisualsFromMap(context, s);
                                     return DropdownMenuItem<String>(
                                       value: s['id'],
                                       child: Row(
+                                        mainAxisSize: MainAxisSize.min,
                                         children: [
                                           Container(
                                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -545,7 +614,7 @@ class _CreateWorkPackageScreenState extends State<CreateWorkPackageScreen> {
                                               children: [
                                                 Icon(icon, size: 18, color: fg),
                                                 const SizedBox(width: 6),
-                                                Text(name, style: TextStyle(color: fg, fontSize: 13)),
+                                                Text(name, style: theme.textTheme.bodySmall?.copyWith(color: fg)),
                                               ],
                                             ),
                                           ),
@@ -557,50 +626,71 @@ class _CreateWorkPackageScreenState extends State<CreateWorkPackageScreen> {
                               onChanged: (v) => setState(() => _selectedStatusId = v),
                             ),
                             const SizedBox(height: 16),
-                            TextFormField(
-                              controller: _parentIdController,
-                              decoration: const InputDecoration(
-                                labelText: 'Üst iş (ID)',
-                                hintText: 'Üst iş paketi numarası (boş bırakılabilir)',
-                                prefixIcon: Icon(Icons.account_tree_outlined),
-                                border: OutlineInputBorder(),
-                              ),
-                              keyboardType: TextInputType.number,
+                            _ParentWorkPackageSelector(
+                              selectedParent: _selectedParent,
+                              projectId: _selectedProject?.id,
+                              client: client,
+                              onSelect: (wp) {
+                                setState(() {
+                                  _selectedParent = wp;
+                                  _parentIdController.text = wp.id;
+                                });
+                              },
+                              onClear: () {
+                                setState(() {
+                                  _selectedParent = null;
+                                  _parentIdController.clear();
+                                });
+                              },
                             ),
                             const SizedBox(height: 16),
                             if (_versions.isNotEmpty)
                               DropdownButtonFormField<String>(
-                                value: _selectedVersionId,
-                                decoration: const InputDecoration(
+                                initialValue: _selectedVersionId,
+                                decoration: InputDecoration(
                                   labelText: 'Versiyon / Sprint',
                                   prefixIcon: Icon(Icons.flag_outlined),
-                                  border: OutlineInputBorder(),
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                                 ),
                                 items: [
-                                  const DropdownMenuItem<String>(
+                                  DropdownMenuItem<String>(
                                     value: null,
                                     child: Row(
+                                      mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Icon(Icons.flag_outlined, size: 20, color: Colors.grey),
-                                        SizedBox(width: 12),
-                                        Text('— Seçiniz'),
+                                        Icon(Icons.flag_outlined, size: 20, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                                        const SizedBox(width: 12),
+                                        const Text('— Seçiniz'),
                                       ],
                                     ),
                                   ),
                                   ..._versions.map((v) => DropdownMenuItem<String>(
                                         value: v.id.toString(),
-                                        child: Row(
-                                          children: [
-                                            Icon(
-                                              v.isOpen ? Icons.directions_run_rounded : Icons.flag_rounded,
-                                              size: 20,
-                                              color: v.isOpen ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
-                                            ),
-                                            const SizedBox(width: 12),
-                                            Expanded(
-                                              child: Text('${v.name}${v.isOpen ? ' (açık)' : ''}'),
-                                            ),
-                                          ],
+                                        child: LayoutBuilder(
+                                          builder: (context, constraints) {
+                                            final w = constraints.maxWidth.isFinite && constraints.maxWidth > 0
+                                                ? constraints.maxWidth
+                                                : 250.0;
+                                            return SizedBox(
+                                              width: w,
+                                              child: Row(
+                                                children: [
+                                                  Icon(
+                                                    v.isOpen ? Icons.directions_run_rounded : Icons.flag_rounded,
+                                                    size: 20,
+                                                    color: v.isOpen ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+                                                  ),
+                                                  const SizedBox(width: 12),
+                                                  Expanded(
+                                                    child: Text(
+                                                      '${v.name}${v.isOpen ? ' (açık)' : ''}',
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                          },
                                         ),
                                       )),
                                 ],
@@ -644,7 +734,7 @@ class _CreateWorkPackageScreenState extends State<CreateWorkPackageScreen> {
                                 ),
                                 child: Text(
                                   _error!,
-                                  style: TextStyle(
+                                  style: theme.textTheme.bodyMedium?.copyWith(
                                     color: theme.colorScheme.onErrorContainer,
                                   ),
                                 ),
@@ -660,16 +750,270 @@ class _CreateWorkPackageScreenState extends State<CreateWorkPackageScreen> {
                                   ? const SizedBox(
                                       height: 22,
                                       width: 22,
-                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                      child: SmallLoadingIndicator(),
                                     )
                                   : const Text('Oluştur'),
                             ),
-                          ],
+                                  const SizedBox(height: 32),
+                                ],
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     );
                   },
                 ),
+      ),
+    );
+  }
+}
+
+/// Üst iş seçimi: liste ile arama; tam liste yüklenmez, yazıldıkça aranır.
+class _ParentWorkPackageSelector extends StatefulWidget {
+  final WorkPackage? selectedParent;
+  final String? projectId;
+  final OpenProjectClient? client;
+  final void Function(WorkPackage) onSelect;
+  final VoidCallback onClear;
+
+  const _ParentWorkPackageSelector({
+    required this.selectedParent,
+    required this.projectId,
+    required this.client,
+    required this.onSelect,
+    required this.onClear,
+  });
+
+  @override
+  State<_ParentWorkPackageSelector> createState() => _ParentWorkPackageSelectorState();
+}
+
+class _ParentWorkPackageSelectorState extends State<_ParentWorkPackageSelector> {
+  void _openSearch() {
+    if (widget.projectId == null || widget.client == null) {
+      showErrorSnackBar(context, AppStrings.errorSelectProjectFirst);
+      return;
+    }
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (ctx) => _ParentSearchSheet(
+        projectId: widget.projectId!,
+        client: widget.client!,
+        onSelect: (wp) {
+          widget.onSelect(wp);
+          Navigator.of(ctx).pop();
+        },
+        onClear: () {
+          widget.onClear();
+          Navigator.of(ctx).pop();
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final parent = widget.selectedParent;
+    return InputDecorator(
+      decoration: InputDecoration(
+        labelText: 'Üst iş',
+        hintText: 'Ara veya seçin…',
+        prefixIcon: const Icon(Icons.account_tree_outlined),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      child: InkWell(
+        onTap: _openSearch,
+        borderRadius: BorderRadius.circular(4),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  parent != null ? '#${parent.id} — ${parent.subject}' : 'Üst iş seçin (arama ile)',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: parent != null ? null : Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (parent != null)
+                IconButton(
+                  icon: const Icon(Icons.clear),
+                  onPressed: widget.onClear,
+                  tooltip: 'Üst işi kaldır',
+                ),
+              const Icon(Icons.arrow_drop_down),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ParentSearchSheet extends StatefulWidget {
+  final String projectId;
+  final OpenProjectClient client;
+  final void Function(WorkPackage) onSelect;
+  final VoidCallback onClear;
+
+  const _ParentSearchSheet({
+    required this.projectId,
+    required this.client,
+    required this.onSelect,
+    required this.onClear,
+  });
+
+  @override
+  State<_ParentSearchSheet> createState() => _ParentSearchSheetState();
+}
+
+class _ParentSearchSheetState extends State<_ParentSearchSheet> {
+  final TextEditingController _searchController = TextEditingController();
+  Timer? _debounce;
+  List<WorkPackage> _results = [];
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  void _onSearchChanged() {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      _doSearch(_searchController.text.trim());
+    });
+  }
+
+  Future<void> _doSearch(String query) async {
+    if (query.isEmpty) {
+      setState(() {
+        _results = [];
+        _loading = false;
+        _error = null;
+      });
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final list = await widget.client.searchWorkPackagesForParent(
+        projectId: widget.projectId,
+        query: query,
+        pageSize: 20,
+      );
+      if (mounted) {
+        setState(() {
+          _results = list;
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = ErrorMessages.userFriendly(e);
+          _results = [];
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      hintText: 'ID veya başlıkla ara...',
+                      prefixIcon: Icon(Icons.search),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      isDense: true,
+                    ),
+                    autofocus: true,
+                    textInputAction: TextInputAction.search,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: widget.onClear,
+                  child: const Text('Temizle'),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.5),
+            child: AsyncContent(
+              loading: _loading,
+              error: _error,
+              onRetry: () => _doSearch(_searchController.text.trim()),
+              child: _searchController.text.trim().isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          'Üst iş seçmek için ID veya başlık yazın.',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                      ),
+                    )
+                  : _results.isEmpty
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Text(
+                              'Sonuç yok.',
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                  ),
+                            ),
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: _results.length,
+                          itemBuilder: (context, i) {
+                            final wp = _results[i];
+                            return ListTile(
+                              leading: const Icon(Icons.account_tree_outlined),
+                              title: Text('#${wp.id}'),
+                              subtitle: Text(wp.subject, overflow: TextOverflow.ellipsis),
+                              onTap: () => widget.onSelect(wp),
+                            );
+                          },
+                        ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -13,7 +13,8 @@ Bu dokümanda OpenProject bildirimlerinin mobil uygulamaya nasıl yansıdığı 
 
 2. **Mobil uygulama**
    - **Uygulama açıkken:** Her **5 dakikada** bir `GET /api/v3/notifications` (sadece okunmamış) ile sayı alınır. Önceki sayıdan büyükse ve Profil > Bildirim ayarlarından “Yeni bildirimde telefon bildirimi” açıksa **yerel (telefon) bildirimi** gösterilir.
-   - **Uygulama kapalı / arka plandayken:** **Workmanager** ile yaklaşık **30 dakikada** bir aynı API çağrılır; sayı artmışsa yine yerel bildirim gösterilir (yine profil ayarına bağlı).
+   - **Uygulama kapalı / arka plandayken:** **Workmanager** ile **ağ bağlıyken** yaklaşık **30 dakikada** bir aynı API çağrılır; ilk çalışma girişten **1 dakika** sonra, sonra periyodik devam eder. Sayı artmışsa yine yerel bildirim gösterilir (profil ayarına bağlı).
+   - **İzin:** Giriş (connect) sonrası **bildirim izni** istenir; verilmezse telefon bildirimi gösterilmez.
 
 3. **Sonuç**  
    OpenProject’te oluşan **uygulama içi bildirimler** (e-postayla aynı olaylarda) API üzerinden sayılıyor; sayı arttığında mobil uygulama telefon bildirimi gösteriyor. İçerik/detay OpenProject’te; mobil tarafta sadece “X okunmamış bildirim” özeti var.
@@ -41,7 +42,8 @@ Bu dokümanda OpenProject bildirimlerinin mobil uygulamaya nasıl yansıdığı 
    - **Tekrarlama:** Her çalışma günü için aynı saatte (örn. her Pazartesi 16:45) tekrarlayan bildirim planlanır.
 
 3. **Ne zaman planlanır?**  
-   Giriş yaptıktan sonra ve Profil’de hatırlatmayı açıp mesai bitiş saatini kaydettikten sonra `TimeTrackingReminderService.scheduleFromPrefs` çağrılır; yerel bildirimler bu anda planlanır.
+   - **Giriş (connect)** ve **uygulama her açıldığında (initialize)** `TimeTrackingReminderService.scheduleFromPrefs` çağrılır; böylece mesai hatırlatması her zaman güncel kalır (cihaz yeniden başlasa bile uygulama bir kez açıldığında yeniden planlanır).
+   - Profil’de hatırlatmayı açıp mesai bitiş saatini kaydettikten sonra da aynı servis tetiklenir.
 
 ### Kontrol listesi – Mesai hatırlatması gelsin
 
@@ -65,3 +67,8 @@ Bu dokümanda OpenProject bildirimlerinin mobil uygulamaya nasıl yansıdığı 
 | Mesai hatırlatması | Profil’de açık + mesai bitiş saati | Her çalışma günü, mesai bitişinden 15 dk önce (cihaz yerel saati) |
 
 Her iki özellik de **Profil > Bildirim / Zaman takibi** ayarlarına ve cihaz bildirim iznine bağlıdır; yukarıdaki listeler test sırasında kontrol edilebilir.
+
+### Arka planın güvenilir çalışması için
+
+- **Bildirim izni:** Giriş sonrası istenen izni vermeniz gerekir; aksi halde arka planda gelen bildirimler gösterilmez.
+- **Pil / pil optimizasyonu:** Bazı cihazlarda “Pil tasarrufu” veya “Arka plan kısıtlaması” uygulamayı sınırlayabilir. Arka plan bildirimlerinin düzenli gelmesi için **Ayarlar → Uygulamalar → ProjectFlow → Pil** (veya benzeri) bölümünden uygulamanın kısıtlanmadığından emin olun.

@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../models/project.dart';
+import '../constants/app_strings.dart';
 import '../state/auth_state.dart';
 import '../utils/error_messages.dart';
-import 'dashboard_screen.dart';
-import 'profile_screen.dart';
+import '../utils/haptic.dart';
+import '../widgets/small_loading_indicator.dart';
+import 'connect_settings_screen.dart';
+import 'main_shell_screen.dart';
 
 /// Giriş sonrası: projeleri yükler; varsayılan proje varsa Dashboard, yoksa Profil (proje seçimi zorunlu) gösterir.
 class AuthenticatedGateScreen extends StatefulWidget {
@@ -40,6 +42,9 @@ class _AuthenticatedGateScreenState extends State<AuthenticatedGateScreen> {
       if (savedId != null && projects.any((p) => p.id == savedId)) {
         final match = projects.firstWhere((p) => p.id == savedId);
         auth.setActiveProject(match);
+      } else if (projects.length == 1) {
+        // Tek proje varsa kullanıcıdan seçim istemeden onu seç
+        auth.setActiveProject(projects.first);
       }
     } catch (e) {
       if (mounted) {
@@ -60,27 +65,79 @@ class _AuthenticatedGateScreenState extends State<AuthenticatedGateScreen> {
       return Scaffold(
         body: Center(
           child: _error != null
-              ? Padding(
-                  padding: const EdgeInsets.all(16),
+              ? Card(
+                  margin: const EdgeInsets.all(16),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          _error!,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Semantics(
+                          button: true,
+                          label: '${AppStrings.labelRetry}. Projeleri yeniden yüklemeyi dene',
+                          child: FilledButton(
+                            onPressed: () {
+                              lightImpact();
+                              _resolve();
+                            },
+                            child: const Text(AppStrings.labelRetry),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Semantics(
+                          button: true,
+                          label: 'Bağlantı ayarlarına git. Instance URL ve API key düzenlenebilir',
+                          child: OutlinedButton(
+                            onPressed: () {
+                              lightImpact();
+                              final auth = context.read<AuthState>();
+                              Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (ctx) => ConnectSettingsScreen(
+                                    initialInstanceUrl: auth.storedInstanceBaseUrl,
+                                  ),
+                                ),
+                              ).then((_) {
+                                if (mounted) _resolve();
+                              });
+                            },
+                            child: const Text('Bağlantı ayarlarına git'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : Semantics(
+                  label: AppStrings.labelLoadingProjects,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(_error!),
-                      const SizedBox(height: 12),
-                      FilledButton(
-                        onPressed: _resolve,
-                        child: const Text('Tekrar dene'),
+                      const SmallLoadingIndicator(),
+                      const SizedBox(height: 16),
+                      ExcludeSemantics(
+                        child: Text(
+                          '${AppStrings.labelLoadingProjects}…',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
                       ),
                     ],
                   ),
-                )
-              : const CircularProgressIndicator(),
+                ),
         ),
       );
     }
-    if (auth.activeProject != null) {
-      return const DashboardScreen();
-    }
-    return const ProfileScreen(requireProjectSelection: true);
+    final initialIndex = auth.activeProject != null ? 0 : 4;
+    return MainShellScreen(initialIndex: initialIndex);
   }
 }

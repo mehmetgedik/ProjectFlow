@@ -16,26 +16,47 @@ Bu doküman, **ProjectFlow – Mobile Client for OpenProject** uygulamasının G
 ### Kısa açıklama (Short description) – max 80 karakter
 Örnek:
 ```
-OpenProject hesabına bağlan; iş paketleri, bildirimler ve zaman kayıtları.
+OpenProject hesabına bağlan; temel özellikler ücretsiz, Pro ile daha fazlası.
 ```
 İngilizce örnek:
 ```
-Connect to OpenProject. Work packages, notifications & time entries.
+Connect to OpenProject. Free core features; unlock more with Pro.
 ```
 
 ### Uzun açıklama (Full description) – max 4000 karakter
 Örnek (Türkçe):
 ```
-ProjectFlow, OpenProject sunucunuza bağlanan resmi mobil istemcidir.
+ProjectFlow, OpenProject sunucunuza bağlanan mobil istemcidir. Temel özellikler ücretsiz; gelişmiş özellikler Pro ile açılır.
 
-• Bağlantı: Instance URL ve API anahtarı ile güvenli giriş
-• İş paketleri: Listeleme, detay, hızlı güncellemeler
-• Bildirimler: OpenProject bildirimlerinizi takip edin
-• Zaman kayıtları: Hızlı time entry
-• Projeler: Proje seçimi ve favoriler
+ÜCRETSİZ:
+• Sunucuya bağlanma ve giriş
+• Proje listesi ve proje seçimi
+• Benim işlerim listesi ve detay
+• Durum / atama hızlı güncelleme
+• Yorum görüntüleme ve yeni yorum ekleme
+• Bildirim listesi ve okundu işaretleme
+• Zaman kaydı ekleme ve listeleme
 
-OpenProject hesabınızdan API anahtarını alıp ProjectFlow ile bağlanarak işlerinizi mobilde yönetin.
+PRO İLE:
+• Zaman kayıtlarını düzenleme ve silme, raporlama
+• Kayıtlı görünümler ve gelişmiş filtreleme
+• Kolon ayarları (liste görünümü)
+• Ek (dosya) yükleme ve gelişmiş görüntüleme
+• İş paketi ilişkileri (parent/child/related)
+• Gelişmiş bildirim deneyimi
+• Gantt ve ileri görünümler
+
+OpenProject hesabınızdan API anahtarını alıp ProjectFlow ile bağlanarak işlerinizi mobilde yönetin. Pro’yu uygulama içinden satın alarak gelişmiş özellikleri açabilirsiniz.
 ```
+
+### Pro ve Ücretsiz karşılaştırması (store dışı / ekran görüntüsü metni)
+Mağaza dışında (web sitesi, sosyal medya, feature graphic metni) kullanılabilecek kısa karşılaştırma:
+
+**Tek cümle (Türkçe):**  
+Temel özellikler ücretsiz; Pro ile zaman raporlama, kayıtlı görünümler, ekler ve Gantt gibi gelişmiş özellikler açılır.
+
+**Tek cümle (İngilizce):**  
+Core features are free; Pro unlocks time reporting, saved views, attachments, and Gantt.
 
 ### Grafikler
 - **Uygulama ikonu:** `apps/mobile/assets/icon/app_icon.png` (512×512 px store için ayrıca yükleyin; Play Console “App icon” alanı)

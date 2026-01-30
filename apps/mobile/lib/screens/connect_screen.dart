@@ -5,7 +5,9 @@ import 'package:provider/provider.dart';
 import '../state/auth_state.dart';
 import '../utils/error_messages.dart';
 import '../utils/haptic.dart';
+import '../utils/snackbar_helpers.dart';
 import '../widgets/letter_avatar.dart';
+import '../widgets/small_loading_indicator.dart';
 import 'connect_settings_screen.dart';
 
 class ConnectScreen extends StatefulWidget {
@@ -49,7 +51,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
 
   Future<void> _connect() async {
     if (_loading) return;
-    if (!_formKey.currentState!.validate()) return;
+    if (_formKey.currentState?.validate() != true) return;
 
     setState(() {
       _loading = true;
@@ -109,9 +111,11 @@ class _ConnectScreenState extends State<ConnectScreen> {
               SliverAppBar(
                 title: const Text('ProjectFlow'),
                 centerTitle: true,
-                backgroundColor: Colors.transparent,
+                backgroundColor: colorScheme.surface,
                 elevation: 0,
                 scrolledUnderElevation: 2,
+                floating: true,
+                snap: true,
                 actions: [
                   IconButton(
                     icon: const Icon(Icons.settings_rounded),
@@ -123,22 +127,21 @@ class _ConnectScreenState extends State<ConnectScreen> {
                   ),
                 ],
               ),
-              SliverFillRemaining(
-                hasScrollBody: false,
+              SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Center(
-                    child: SingleChildScrollView(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 420),
-                        child: Form(
-                          key: _formKey,
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              // Logo / marka alanı
-                              Container(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 420),
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const SizedBox(height: 16),
+                            // Logo / marka alanı
+                            Container(
                                 padding: const EdgeInsets.all(24),
                                 decoration: BoxDecoration(
                                   color: colorScheme.surface.withValues(alpha: 0.9),
@@ -203,17 +206,13 @@ class _ConnectScreenState extends State<ConnectScreen> {
                                           onPressed: () {
                                             _instanceFocusNode.requestFocus();
                                             if (mounted) {
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                const SnackBar(
-                                                  content: Text('Klavyede mikrofon ile sesli yazabilirsiniz.'),
-                                                  duration: Duration(seconds: 2),
-                                                ),
-                                              );
+                                              showAppSnackBar(context, 'Klavyede mikrofon ile sesli yazabilirsiniz.');
                                             }
                                           },
                                           tooltip: 'Sesle yazmak için alana odaklan',
                                         ),
                                       ),
+                                      autofillHints: const [AutofillHints.url],
                                       keyboardType: TextInputType.url,
                                       textInputAction: TextInputAction.next,
                                       enableInteractiveSelection: true,
@@ -247,12 +246,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
                                               onPressed: () {
                                                 _apiKeyFocusNode.requestFocus();
                                                 if (mounted) {
-                                                  ScaffoldMessenger.of(context).showSnackBar(
-                                                    const SnackBar(
-                                                      content: Text('Klavyede mikrofon ile sesli yazabilirsiniz.'),
-                                                      duration: Duration(seconds: 2),
-                                                    ),
-                                                  );
+                                                  showAppSnackBar(context, 'Klavyede mikrofon ile sesli yazabilirsiniz.');
                                                 }
                                               },
                                               tooltip: 'Sesle yazmak için alana odaklan',
@@ -274,6 +268,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
                                           ],
                                         ),
                                       ),
+                                      autofillHints: const [AutofillHints.password],
                                       obscureText: _obscureApiKey,
                                       enableSuggestions: false,
                                       autocorrect: false,
@@ -313,9 +308,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
                                             Expanded(
                                               child: Text(
                                                 _error!,
-                                                style: TextStyle(
+                                                style: theme.textTheme.bodyMedium?.copyWith(
                                                   color: colorScheme.onErrorContainer,
-                                                  fontSize: 14,
                                                 ),
                                               ),
                                             ),
@@ -324,38 +318,40 @@ class _ConnectScreenState extends State<ConnectScreen> {
                                       ),
                                     ],
                                     const SizedBox(height: 20),
-                                    FilledButton(
-                                      onPressed: () {
-                                        mediumImpact();
-                                        _connect();
-                                      },
-                                      style: FilledButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(
-                                            vertical: 16),
-                                      ),
-                                      child: _loading
-                                          ? const SizedBox(
+                                    Semantics(
+                                      label: 'OpenProject hesabına bağlan',
+                                      button: true,
+                                      child: FilledButton(
+                                        onPressed: () {
+                                          mediumImpact();
+                                          _connect();
+                                        },
+                                        style: FilledButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(
+                                              vertical: 16),
+                                        ),
+                                        child: _loading
+                                            ? const SizedBox(
                                               height: 22,
                                               child: Center(
-                                                child: SizedBox(
-                                                  width: 22,
-                                                  height: 22,
-                                                  child: CircularProgressIndicator(
-                                                    strokeWidth: 2,
-                                                  ),
-                                                ),
+                                                child: SmallLoadingIndicator(size: 22),
                                               ),
                                             )
                                           : const Text('Bağlan'),
+                                      ),
                                     ),
                                     const SizedBox(height: 12),
-                                    TextButton.icon(
+                                    Semantics(
+                                      button: true,
+                                      label: 'Saklanan ayarları sil',
+                                      child: TextButton.icon(
                                       onPressed: (auth.storedInstanceBaseUrl != null &&
                                                   auth.storedInstanceBaseUrl!.isNotEmpty) ||
                                               (auth.storedApiKey != null &&
                                                   auth.storedApiKey!.isNotEmpty)
                                           ? () async {
                                               mediumImpact();
+                                              final authState = context.read<AuthState>();
                                               final confirm = await showDialog<bool>(
                                                 context: context,
                                                 builder: (ctx) => AlertDialog(
@@ -369,16 +365,24 @@ class _ConnectScreenState extends State<ConnectScreen> {
                                                           Navigator.of(ctx).pop(false),
                                                       child: const Text('İptal'),
                                                     ),
-                                                    FilledButton(
-                                                      onPressed: () =>
-                                                          Navigator.of(ctx).pop(true),
-                                                      child: const Text('Sil'),
+                                                    Semantics(
+                                                      label: 'Saklanan ayarları sil ve onayla',
+                                                      button: true,
+                                                      child: FilledButton(
+                                                        onPressed: () =>
+                                                            Navigator.of(ctx).pop(true),
+                                                        style: FilledButton.styleFrom(
+                                                          backgroundColor: Theme.of(ctx).colorScheme.error,
+                                                          foregroundColor: Theme.of(ctx).colorScheme.onError,
+                                                        ),
+                                                        child: const Text('Sil'),
+                                                      ),
                                                     ),
                                                   ],
                                                 ),
                                               );
                                               if (!mounted || confirm != true) return;
-                                              await context.read<AuthState>().clearStoredSettings();
+                                              await authState.clearStoredSettings();
                                               if (!mounted) return;
                                               _instanceController.clear();
                                               _apiKeyController.clear();
@@ -388,25 +392,26 @@ class _ConnectScreenState extends State<ConnectScreen> {
                                       icon: const Icon(Icons.delete_outline_rounded, size: 20),
                                       label: const Text('Saklanan ayarları sil'),
                                       style: TextButton.styleFrom(
-                                        foregroundColor: colorScheme.error,
+                                        foregroundColor: colorScheme.onSurfaceVariant,
                                       ),
                                     ),
+                                    ),
+                            const SizedBox(height: 32),
                                   ],
                                 ),
                               ),
-                            ],
-                          ),
+                          ],
                         ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ],
+              ],
+            ),
           ),
         ),
-      ),
-    );
+      );
   }
 }
 
@@ -419,12 +424,15 @@ class _LogoSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      child: Image.asset(
-        'assets/icon/app_icon_transpara.png',
-        width: 220,
-        height: 120,
-        fit: BoxFit.contain,
-        isAntiAlias: true,
+      child: Semantics(
+        label: 'ProjectFlow logosu',
+        child: Image.asset(
+          'assets/icon/app_icon_transpara.png',
+          width: 220,
+          height: 120,
+          fit: BoxFit.contain,
+          isAntiAlias: true,
+        ),
       ),
     );
   }

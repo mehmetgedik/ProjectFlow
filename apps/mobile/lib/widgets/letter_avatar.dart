@@ -1,7 +1,8 @@
-import 'dart:typed_data';
-
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+
+import '../services/avatar_cache.dart';
 
 /// Profil resmi (imageUrl) varsa onu gösterir, yoksa veya yüklenemezse baş harf avatarı.
 class LetterAvatar extends StatelessWidget {
@@ -55,21 +56,22 @@ class LetterAvatar extends StatelessWidget {
       final last = parts.last.isNotEmpty ? parts.last[0] : '';
       return (first + last).toUpperCase();
     }
-    return t.length >= 1 ? t.substring(0, 1).toUpperCase() : '?';
+    return t.isNotEmpty ? t.substring(0, 1).toUpperCase() : '?';
   }
 
   Widget _buildLetterAvatar(BuildContext context) {
     final bg = backgroundColor ?? _colorFromString(displayName ?? '?');
-    final fg = foregroundColor ?? Colors.white;
+    final fg = foregroundColor ?? Theme.of(context).colorScheme.onPrimary;
     return CircleAvatar(
       radius: size / 2,
       backgroundColor: bg,
       foregroundColor: fg,
       child: Text(
         _initial,
-        style: TextStyle(
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
           fontSize: size * 0.45,
           fontWeight: FontWeight.w600,
+          color: fg,
         ),
       ),
     );
@@ -115,8 +117,30 @@ class LetterAvatar extends StatelessWidget {
     if (uri == null || !_isLikelyAvatarUrl(uri)) return _buildLetterAvatar(context);
     if (_failedUrls.contains(url)) return _buildLetterAvatar(context);
 
-    // Uzantısız URL: önce HTTP ile çek, Content-Type kontrol et; sadece bitmap ise göster (SVG/HTML decoder'a gitmesin).
+    // Uzantısız URL: önce önbelleğe bak, yoksa HTTP ile çek; Content-Type bitmap ise göster (SVG/HTML decoder'a gitmesin).
     if (_isExtensionLessAvatarUrl(uri)) {
+      final cached = AvatarCache.instance.get(url);
+      if (cached != null) {
+        final pixelSize = (size * 2).toInt().clamp(1, 256);
+        return SizedBox(
+          width: size,
+          height: size,
+          child: ClipOval(
+            child: Image.memory(
+              cached,
+              fit: BoxFit.cover,
+              width: size,
+              height: size,
+              cacheWidth: pixelSize,
+              cacheHeight: pixelSize,
+              errorBuilder: (_, e, s) {
+                _recordFailedUrl(url);
+                return _buildLetterAvatar(context);
+              },
+            ),
+          ),
+        );
+      }
       return _AvatarFromUrl(
         url: url,
         headers: imageHeaders,
@@ -140,11 +164,11 @@ class LetterAvatar extends StatelessWidget {
           cacheWidth: pixelSize,
           cacheHeight: pixelSize,
           headers: imageHeaders,
-          errorBuilder: (_, __, ___) {
+          errorBuilder: (_, e, s) {
             _recordFailedUrl(url);
             return _buildLetterAvatar(context);
           },
-          frameBuilder: (_, child, frame, __) {
+          frameBuilder: (_, child, frame, loaded) {
             if (frame == null) return _buildLetterAvatar(context);
             return child;
           },
@@ -181,6 +205,11 @@ class _AvatarFromUrlState extends State<_AvatarFromUrl> {
   @override
   void initState() {
     super.initState();
+    final cached = AvatarCache.instance.get(widget.url);
+    if (cached != null) {
+      _bytes = cached;
+      return;
+    }
     _load();
   }
 
@@ -212,8 +241,14 @@ class _AvatarFromUrlState extends State<_AvatarFromUrl> {
         return;
       }
 
-      setState(() => _bytes = Uint8List.fromList(response.bodyBytes));
-    } catch (_) {
+      final bytes = Uint8List.fromList(response.bodyBytes);
+      AvatarCache.instance.put(widget.url, bytes);
+      setState(() => _bytes = bytes);
+    } catch (e) {
+      if (kDebugMode) {
+        // ignore: avoid_print
+        debugPrint('LetterAvatar load failed: $e');
+      }
       if (mounted) {
         setState(() => _failed = true);
         widget.onFailed();
@@ -223,7 +258,17 @@ class _AvatarFromUrlState extends State<_AvatarFromUrl> {
 
   @override
   Widget build(BuildContext context) {
-    if (_failed || _bytes == null) return widget.fallback;
+    if (_failed) return widget.fallback;
+
+    // Hot reload veya geç yükleme: State _bytes null kalabilir; cache başka instance tarafından doldurulmuş olabilir.
+    final bytes = _bytes ?? AvatarCache.instance.get(widget.url);
+    if (bytes == null) return widget.fallback;
+
+    if (_bytes == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _bytes = bytes);
+      });
+    }
 
     final pixelSize = (widget.size * 2).toInt().clamp(1, 256);
     return SizedBox(
@@ -231,13 +276,13 @@ class _AvatarFromUrlState extends State<_AvatarFromUrl> {
       height: widget.size,
       child: ClipOval(
         child: Image.memory(
-          _bytes!,
+          bytes,
           fit: BoxFit.cover,
           width: widget.size,
           height: widget.size,
           cacheWidth: pixelSize,
           cacheHeight: pixelSize,
-          errorBuilder: (_, __, ___) {
+          errorBuilder: (_, e, s) {
             widget.onFailed();
             return widget.fallback;
           },

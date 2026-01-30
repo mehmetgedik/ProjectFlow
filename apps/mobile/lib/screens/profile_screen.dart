@@ -1,18 +1,24 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../api/openproject_client.dart';
 import '../models/project.dart';
+import '../utils/app_logger.dart';
+import '../app_navigation.dart';
 import '../state/auth_state.dart';
+import '../state/pro_state.dart';
 import '../state/theme_state.dart';
 import '../state/notification_prefs.dart';
 import '../state/time_tracking_reminder_prefs.dart';
-import '../services/local_notification_service.dart';
 import '../services/time_tracking_reminder_service.dart';
 import '../utils/error_messages.dart';
 import '../utils/haptic.dart';
+import '../constants/app_strings.dart';
+import '../utils/snackbar_helpers.dart';
+import '../widgets/async_content.dart';
 import '../widgets/letter_avatar.dart';
 import '../widgets/projectflow_logo_button.dart';
+import '../widgets/small_loading_indicator.dart';
 
 /// Avatar URL'si instance ile aynı host ise auth header döndürür (OpenProject özel avatar için).
 Map<String, String>? _avatarHeaders(AuthState auth) {
@@ -27,10 +33,19 @@ Map<String, String>? _avatarHeaders(AuthState auth) {
 
 /// P1-F01: Profil/hesap görünümü – ad, kullanıcı adı, instance; avatar; yetki varsa düzenleme.
 /// [requireProjectSelection] true ise varsayılan proje seçimi zorunludur (ilk giriş / kayıt yok).
+/// [isInsideShell] alt navigasyon kabuğu içindeyse true.
+/// [onProjectSelected] proje seçildiğinde (requireProjectSelection ile) çağrılır; kabuk Dashboard sekmesine geçebilir.
 class ProfileScreen extends StatelessWidget {
-  const ProfileScreen({super.key, this.requireProjectSelection = false});
+  const ProfileScreen({
+    super.key,
+    this.requireProjectSelection = false,
+    this.isInsideShell = false,
+    this.onProjectSelected,
+  });
 
   final bool requireProjectSelection;
+  final bool isInsideShell;
+  final VoidCallback? onProjectSelected;
 
   Future<void> _editDisplayName(BuildContext context, AuthState auth) async {
     final client = auth.client;
@@ -38,11 +53,10 @@ class ProfileScreen extends StatelessWidget {
     Map<String, String> me;
     try {
       me = await client.getMe();
-    } catch (_) {
+    } catch (e) {
+      if (kDebugMode) AppLogger.logError('Profil bilgisi yüklenemedi', error: e);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profil bilgisi yüklenemedi.')),
-        );
+        showErrorSnackBar(context, AppStrings.errorProfileLoadFailed);
       }
       return;
     }
@@ -62,7 +76,9 @@ class ProfileScreen extends StatelessWidget {
                 labelText: 'Ad',
                 hintText: 'Ad',
               ),
+              autofillHints: const [AutofillHints.givenName],
               textCapitalization: TextCapitalization.words,
+              textInputAction: TextInputAction.next,
               maxLength: 30,
             ),
             const SizedBox(height: 12),
@@ -72,7 +88,9 @@ class ProfileScreen extends StatelessWidget {
                 labelText: 'Soyad',
                 hintText: 'Soyad',
               ),
+              autofillHints: const [AutofillHints.familyName],
               textCapitalization: TextCapitalization.words,
+              textInputAction: TextInputAction.done,
               maxLength: 30,
             ),
           ],
@@ -89,24 +107,25 @@ class ProfileScreen extends StatelessWidget {
         ],
       ),
     );
-    if (saved != true) return;
-    final firstName = firstController.text.trim();
-    final lastName = lastController.text.trim();
     try {
-      await client.patchMe(firstName: firstName, lastName: lastName);
-      await auth.refreshUserProfile();
-      LetterAvatar.clearFailedCache();
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profil güncellendi.')),
-        );
+      if (saved != true) return;
+      final firstName = firstController.text.trim();
+      final lastName = lastController.text.trim();
+      try {
+        await client.patchMe(firstName: firstName, lastName: lastName);
+        await auth.refreshUserProfile();
+        LetterAvatar.clearFailedCache();
+        if (context.mounted) {
+          showAppSnackBar(context, 'Profil güncellendi.');
+        }
+      } catch (e) {
+        if (context.mounted) {
+          showErrorSnackBar(context, e, duration: const Duration(seconds: 5));
+        }
       }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(ErrorMessages.userFriendly(e))),
-        );
-      }
+    } finally {
+      firstController.dispose();
+      lastController.dispose();
     }
   }
 
@@ -155,6 +174,10 @@ class ProfileScreen extends StatelessWidget {
                     ),
               ),
             ),
+          const SizedBox(height: 12),
+          Center(
+            child: _ProStatusChip(isPro: context.watch<ProState>().isPro),
+          ),
           const SizedBox(height: 32),
           Padding(
             padding: const EdgeInsets.only(bottom: 16),
@@ -192,7 +215,10 @@ class ProfileScreen extends StatelessWidget {
           ),
           if (auth.client != null) ...[
             const SizedBox(height: 24),
-            _DefaultProjectCard(requireSelection: requireProjectSelection),
+            _DefaultProjectCard(
+              requireSelection: requireProjectSelection,
+              onProjectSelected: onProjectSelected,
+            ),
           ],
           const SizedBox(height: 24),
           Padding(
@@ -207,47 +233,58 @@ class ProfileScreen extends StatelessWidget {
           Consumer<ThemeState>(
             builder: (context, themeState, _) {
               return Card(
-                child: Column(
-                  children: [
-                    RadioListTile<ThemeMode>(
-                      title: const Text('Açık tema'),
-                      subtitle: const Text('Her zaman açık arka plan'),
-                      value: ThemeMode.light,
-                      groupValue: themeState.themeMode,
-                      onChanged: (v) {
-                        if (v != null) {
-                          selectionClick();
-                          themeState.setThemeMode(v);
-                        }
-                      },
-                    ),
-                    const Divider(height: 1),
-                    RadioListTile<ThemeMode>(
-                      title: const Text('Koyu tema'),
-                      subtitle: const Text('Her zaman koyu arka plan'),
-                      value: ThemeMode.dark,
-                      groupValue: themeState.themeMode,
-                      onChanged: (v) {
-                        if (v != null) {
-                          selectionClick();
-                          themeState.setThemeMode(v);
-                        }
-                      },
-                    ),
-                    const Divider(height: 1),
-                    RadioListTile<ThemeMode>(
-                      title: const Text('Sistem varsayılanı'),
-                      subtitle: const Text('Cihaz ayarına göre açık/koyu'),
-                      value: ThemeMode.system,
-                      groupValue: themeState.themeMode,
-                      onChanged: (v) {
-                        if (v != null) {
-                          selectionClick();
-                          themeState.setThemeMode(v);
-                        }
-                      },
-                    ),
-                  ],
+                child: RadioGroup<ThemeMode>(
+                  groupValue: themeState.themeMode,
+                  onChanged: (v) {
+                    if (v != null) {
+                      selectionClick();
+                      themeState.setThemeMode(v);
+                    }
+                  },
+                  child: Column(
+                    children: [
+                      RadioListTile<ThemeMode>(
+                        title: const Text('Açık tema'),
+                        subtitle: const Text('Her zaman açık arka plan'),
+                        value: ThemeMode.light,
+                      ),
+                      const Divider(height: 1),
+                      RadioListTile<ThemeMode>(
+                        title: const Text('Koyu tema'),
+                        subtitle: const Text('Her zaman koyu arka plan'),
+                        value: ThemeMode.dark,
+                      ),
+                      const Divider(height: 1),
+                      RadioListTile<ThemeMode>(
+                        title: const Text('Sistem varsayılanı'),
+                        subtitle: const Text('Cihaz ayarına göre açık/koyu'),
+                        value: ThemeMode.system,
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 24),
+          Consumer<ProState>(
+            builder: (context, pro, _) {
+              return Card(
+                child: ListTile(
+                  leading: Icon(
+                    pro.isPro ? Icons.check_circle : Icons.star_outline,
+                    color: pro.isPro
+                        ? Theme.of(context).colorScheme.primary
+                        : null,
+                  ),
+                  title: Text(pro.isPro ? 'Pro\'ya sahipsiniz' : 'Pro\'ya yükselt'),
+                  subtitle: Text(
+                    pro.isPro
+                        ? 'Tüm Pro özelliklerine erişebilirsiniz'
+                        : 'Gelişmiş özellikleri açmak için Pro\'yu satın alın',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).pushNamed(AppRoutes.proUpgrade),
                 ),
               );
             },
@@ -263,12 +300,47 @@ class ProfileScreen extends StatelessWidget {
           const SizedBox(height: 32),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: FilledButton.icon(
-              onPressed: () => auth.logout(),
-              icon: const Icon(Icons.logout),
-              label: const Text('Çıkış yap'),
-              style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Semantics(
+              label: 'Hesaptan çıkış yap',
+              button: true,
+              child: FilledButton.icon(
+                onPressed: () async {
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Çıkış yap'),
+                      content: const Text(
+                        'Hesabınızdan çıkış yapmak istediğinize emin misiniz?',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(ctx).pop(false),
+                          child: const Text('İptal'),
+                        ),
+                        FilledButton(
+                          onPressed: () => Navigator.of(ctx).pop(true),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Theme.of(ctx).colorScheme.error,
+                            foregroundColor: Theme.of(ctx).colorScheme.onError,
+                          ),
+                          child: const Text('Çıkış yap'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirm != true || !context.mounted) return;
+                  await auth.logout();
+                  if (context.mounted) {
+                    Navigator.of(context).popUntil((route) => route.isFirst);
+                  }
+                },
+                icon: const Icon(Icons.logout),
+                label: const Text('Çıkış yap'),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  backgroundColor: Theme.of(context).colorScheme.error,
+                  foregroundColor: Theme.of(context).colorScheme.onError,
+                ),
               ),
             ),
           ),
@@ -317,7 +389,7 @@ class _NotificationSettingsCardState extends State<_NotificationSettingsCard> {
           trailing: SizedBox(
             width: 24,
             height: 24,
-            child: CircularProgressIndicator(strokeWidth: 2),
+            child: SmallLoadingIndicator(),
           ),
         ),
       );
@@ -466,15 +538,11 @@ class _UserPreferencesCardState extends State<_UserPreferencesCard> {
       await client.patchMyPreferences({'timeZone': value});
       if (mounted) setState(() => _timeZone = value);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Saat dilimi güncellendi.')),
-        );
+        showAppSnackBar(context, 'Saat dilimi güncellendi.');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(ErrorMessages.userFriendly(e))),
-        );
+        showErrorSnackBar(context, e, duration: const Duration(seconds: 5));
       }
     }
   }
@@ -489,45 +557,13 @@ class _UserPreferencesCardState extends State<_UserPreferencesCard> {
       if (mounted) setState(() => _notifications = next);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(ErrorMessages.userFriendly(e))),
-        );
+        showErrorSnackBar(context, e, duration: const Duration(seconds: 5));
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return const Card(
-        child: ListTile(
-          title: Text('Hesap tercihleri (OpenProject)'),
-          trailing: SizedBox(
-            width: 24,
-            height: 24,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-        ),
-      );
-    }
-    if (_error != null) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Hesap tercihleri (OpenProject)', style: Theme.of(context).textTheme.titleSmall),
-              const SizedBox(height: 8),
-              Text(_error!),
-              const SizedBox(height: 8),
-              TextButton(onPressed: _load, child: const Text('Tekrar dene')),
-            ],
-          ),
-        ),
-      );
-    }
-
     String currentTzLabel = 'Seçin';
     if (_timeZone != null) {
       final match = _timeZoneList.where((e) => e.key == _timeZone);
@@ -535,59 +571,64 @@ class _UserPreferencesCardState extends State<_UserPreferencesCard> {
     }
 
     return Card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-            child: Text(
-              'Hesap tercihleri (OpenProject)',
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
+      child: AsyncContent(
+        loading: _loading,
+        error: _error,
+        onRetry: _load,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: Text(
+                'Hesap tercihleri (OpenProject)',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+              ),
             ),
-          ),
-          ListTile(
-            title: const Text('Saat dilimi'),
-            subtitle: Text(currentTzLabel),
-            trailing: const Icon(Icons.schedule, size: 20),
-            onTap: () async {
-              final chosen = await showDialog<String>(
-                context: context,
-                builder: (ctx) => SimpleDialog(
-                  title: const Text('Saat dilimi'),
-                  children: [
-                    for (final e in _timeZoneList)
-                      SimpleDialogOption(
-                        onPressed: () => Navigator.pop(ctx, e.key),
-                        child: Text(e.value),
-                      ),
-                    if (_timeZone != null &&
-                        !_timeZoneList.any((e) => e.key == _timeZone))
-                      SimpleDialogOption(
-                        onPressed: () => Navigator.pop(ctx, _timeZone),
-                        child: Text(_timeZone!),
-                      ),
-                  ],
-                ),
-              );
-              if (chosen != null) await _setTimeZone(chosen);
-            },
-          ),
-          const Divider(height: 1),
-          ExpansionTile(
-            title: const Text('Bildirim tercihleri'),
-            subtitle: const Text('Hangi olaylarda bildirim alacağınızı seçin'),
-            children: [
-              for (final e in _notificationLabels.entries)
-                SwitchListTile(
-                  title: Text(e.value, style: Theme.of(context).textTheme.bodyMedium),
-                  value: _notifications[e.key] ?? false,
-                  onChanged: (v) => _setNotification(e.key, v),
-                ),
-            ],
-          ),
-        ],
+            ListTile(
+              title: const Text('Saat dilimi'),
+              subtitle: Text(currentTzLabel),
+              trailing: const Icon(Icons.schedule, size: 20),
+              onTap: () async {
+                final chosen = await showDialog<String>(
+                  context: context,
+                  builder: (ctx) => SimpleDialog(
+                    title: const Text('Saat dilimi'),
+                    children: [
+                      for (final e in _timeZoneList)
+                        SimpleDialogOption(
+                          onPressed: () => Navigator.pop(ctx, e.key),
+                          child: Text(e.value),
+                        ),
+                      if (_timeZone != null &&
+                          !_timeZoneList.any((e) => e.key == _timeZone))
+                        SimpleDialogOption(
+                          onPressed: () => Navigator.pop(ctx, _timeZone),
+                          child: Text(_timeZone!),
+                        ),
+                    ],
+                  ),
+                );
+                if (chosen != null) await _setTimeZone(chosen);
+              },
+            ),
+            const Divider(height: 1),
+            ExpansionTile(
+              title: const Text('Bildirim tercihleri'),
+              subtitle: const Text('Hangi olaylarda bildirim alacağınızı seçin'),
+              children: [
+                for (final e in _notificationLabels.entries)
+                  SwitchListTile(
+                    title: Text(e.value, style: Theme.of(context).textTheme.bodyMedium),
+                    value: _notifications[e.key] ?? false,
+                    onChanged: (v) => _setNotification(e.key, v),
+                  ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -595,9 +636,13 @@ class _UserPreferencesCardState extends State<_UserPreferencesCard> {
 
 /// Varsayılan proje listesi; seçim kayıt altına alınır (AuthState + secure storage).
 class _DefaultProjectCard extends StatefulWidget {
-  const _DefaultProjectCard({required this.requireSelection});
+  const _DefaultProjectCard({
+    required this.requireSelection,
+    this.onProjectSelected,
+  });
 
   final bool requireSelection;
+  final VoidCallback? onProjectSelected;
 
   @override
   State<_DefaultProjectCard> createState() => _DefaultProjectCardState();
@@ -627,15 +672,19 @@ class _DefaultProjectCardState extends State<_DefaultProjectCard> {
     });
     try {
       final list = await client.getProjects();
-      if (mounted) setState(() {
-        _projects = list;
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _projects = list;
+          _loading = false;
+        });
+      }
     } catch (e) {
-      if (mounted) setState(() {
-        _error = ErrorMessages.userFriendly(e);
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _error = ErrorMessages.userFriendly(e);
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -666,36 +715,11 @@ class _DefaultProjectCardState extends State<_DefaultProjectCard> {
                   ),
             ),
           ),
-        if (_loading)
-          const Card(
-            child: ListTile(
-              title: Text('Projeler yükleniyor…'),
-              trailing: SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            ),
-          )
-        else if (_error != null)
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(_error!),
-                  const SizedBox(height: 8),
-                  TextButton(
-                    onPressed: _load,
-                    child: const Text('Tekrar dene'),
-                  ),
-                ],
-              ),
-            ),
-          )
-        else
-          Card(
+        Card(
+          child: AsyncContent(
+            loading: _loading,
+            error: _error,
+            onRetry: _load,
             child: Column(
               children: [
                 ...List.generate(_projects.length, (i) {
@@ -723,9 +747,8 @@ class _DefaultProjectCardState extends State<_DefaultProjectCard> {
                           selectionClick();
                           auth.setActiveProject(p);
                           if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Varsayılan proje kaydedildi.')),
-                            );
+                            showAppSnackBar(context, 'Varsayılan proje kaydedildi.');
+                            widget.onProjectSelected?.call();
                           }
                         },
                       ),
@@ -735,6 +758,7 @@ class _DefaultProjectCardState extends State<_DefaultProjectCard> {
               ],
             ),
           ),
+        ),
       ],
     );
   }
@@ -838,7 +862,7 @@ class _TimeTrackingReminderCardState extends State<_TimeTrackingReminderCard> {
           trailing: SizedBox(
             width: 24,
             height: 24,
-            child: CircularProgressIndicator(strokeWidth: 2),
+            child: SmallLoadingIndicator(),
           ),
         ),
       );
@@ -869,6 +893,50 @@ class _TimeTrackingReminderCardState extends State<_TimeTrackingReminderCard> {
             onTap: _enabled! ? _pickEndTime : null,
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Profil sayfasında Pro / Ücretsiz durumunu gösteren küçük chip.
+class _ProStatusChip extends StatelessWidget {
+  const _ProStatusChip({required this.isPro});
+
+  final bool isPro;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return Material(
+      color: isPro
+          ? colorScheme.primaryContainer
+          : colorScheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(20),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isPro ? Icons.star : Icons.person_outline,
+              size: 16,
+              color: isPro
+                  ? colorScheme.onPrimaryContainer
+                  : colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              isPro ? 'Pro' : 'Ücretsiz',
+              style: theme.textTheme.labelMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: isPro
+                    ? colorScheme.onPrimaryContainer
+                    : colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

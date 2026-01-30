@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../constants/app_strings.dart';
 import '../state/auth_state.dart';
+import '../widgets/small_loading_indicator.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -25,44 +27,67 @@ class _SplashScreenState extends State<SplashScreen> {
         ),
       );
     });
-    Future.microtask(() => context.read<AuthState>().initialize());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<AuthState>().initialize();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              colorScheme.primaryContainer.withValues(alpha: 0.35),
+              colorScheme.surface,
+              colorScheme.surfaceContainerHighest.withValues(alpha: 0.15),
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                child: SizedBox(
-                  width: 280,
-                  height: 180,
-                  child: Image.asset(
-                    'assets/icon/app_icon_transpara.png',
-                    fit: BoxFit.contain,
-                    isAntiAlias: true,
+                child: Semantics(
+                  label: AppStrings.labelProjectFlowLogo,
+                  child: SizedBox(
+                    width: 280,
+                    height: 180,
+                    child: Image.asset(
+                      'assets/icon/app_icon_transpara.png',
+                      fit: BoxFit.contain,
+                      isAntiAlias: true,
+                    ),
                   ),
                 ),
               ),
               const SizedBox(height: 16),
               Text(
-                'Mobile Client for OpenProject',
+                'ProjectFlow',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
               const SizedBox(height: 32),
-              const SizedBox(
-                width: 32,
-                height: 32,
-                child: CircularProgressIndicator(strokeWidth: 2),
+              Semantics(
+                label: AppStrings.labelLoading,
+                child: const SizedBox(
+                  width: 32,
+                  height: 32,
+                  child: SmallLoadingIndicator(),
+                ),
               ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

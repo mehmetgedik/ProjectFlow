@@ -49,6 +49,7 @@ class FilterIconButton extends StatelessWidget {
 }
 
 /// İş listesi ekranında sağ tarafta sticky görünüm/sırala/filtre/kolonlar/yenile aksiyonları.
+/// Pro değilse Görünüm, Filtre ve Kolonlar ikonlarında "Pro" rozeti gösterilir; tıklanınca [onProRequired] çağrılır.
 class StickySideActions extends StatelessWidget {
   const StickySideActions({
     super.key,
@@ -61,6 +62,8 @@ class StickySideActions extends StatelessWidget {
     required this.onOpenFilters,
     required this.onOpenColumns,
     required this.onRefresh,
+    this.isPro = true,
+    this.onProRequired,
   });
 
   final bool collapsed;
@@ -72,6 +75,10 @@ class StickySideActions extends StatelessWidget {
   final Future<void> Function() onOpenFilters;
   final Future<void> Function() onOpenColumns;
   final Future<void> Function() onRefresh;
+  /// Pro kullanıcı değilse Görünüm/Filtre/Kolonlar ikonlarında Pro rozeti gösterilir ve tıklanınca [onProRequired] çağrılır.
+  final bool isPro;
+  /// Pro değilken kullanıcı Görünüm/Filtre/Kolonlar'a tıkladığında çağrılır (örn. Pro yükselt ekranına yönlendirme).
+  final VoidCallback? onProRequired;
 
   @override
   Widget build(BuildContext context) {
@@ -84,8 +91,22 @@ class StickySideActions extends StatelessWidget {
       required String tooltip,
       required VoidCallback onPressed,
       bool highlight = false,
+      bool showProBadge = false,
     }) {
       final fg = highlight ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant;
+      Widget iconWidget = Icon(icon, size: 22, color: fg);
+      if (showProBadge) {
+        iconWidget = Badge(
+          label: Icon(
+            Icons.star_rounded,
+            size: 12,
+            color: theme.colorScheme.onPrimary,
+          ),
+          backgroundColor: theme.colorScheme.primary,
+          smallSize: 18,
+          child: iconWidget,
+        );
+      }
       return Tooltip(
         message: tooltip,
         waitDuration: const Duration(milliseconds: 500),
@@ -97,7 +118,7 @@ class StickySideActions extends StatelessWidget {
             onTap: onPressed,
             child: Padding(
               padding: const EdgeInsets.all(10),
-              child: Icon(icon, size: 22, color: fg),
+              child: iconWidget,
             ),
           ),
         ),
@@ -141,8 +162,9 @@ class StickySideActions extends StatelessWidget {
             const Divider(height: 1),
             iconAction(
               icon: Icons.view_module_rounded,
-              tooltip: 'Kayıtlı görünüm (sorgu) seç',
-              onPressed: () => onOpenViews(),
+              tooltip: isPro ? 'Kayıtlı görünüm (sorgu) seç' : 'Kayıtlı görünüm Pro\'da',
+              showProBadge: !isPro,
+              onPressed: isPro ? () => onOpenViews() : (onProRequired ?? () {}),
             ),
             if (showSort)
               iconAction(
@@ -152,14 +174,18 @@ class StickySideActions extends StatelessWidget {
               ),
             iconAction(
               icon: hasFilters ? Icons.filter_alt_rounded : Icons.tune_rounded,
-              tooltip: hasFilters ? 'Filtreler (aktif)' : 'Filtre ekle veya düzenle',
-              highlight: hasFilters,
-              onPressed: () => onOpenFilters(),
+              tooltip: isPro
+                  ? (hasFilters ? 'Filtreler (aktif)' : 'Filtre ekle veya düzenle')
+                  : 'Filtre ekleme Pro\'da',
+              highlight: hasFilters && isPro,
+              showProBadge: !isPro,
+              onPressed: isPro ? () => onOpenFilters() : (onProRequired ?? () {}),
             ),
             iconAction(
               icon: Icons.view_agenda_rounded,
-              tooltip: 'Liste kolonlarını seç',
-              onPressed: () => onOpenColumns(),
+              tooltip: isPro ? 'Liste kolonlarını seç' : 'Kolon ayarları Pro\'da',
+              showProBadge: !isPro,
+              onPressed: isPro ? () => onOpenColumns() : (onProRequired ?? () {}),
             ),
             iconAction(
               icon: Icons.refresh_rounded,

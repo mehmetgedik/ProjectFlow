@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 
+import '../app_navigation.dart';
+import '../constants/app_strings.dart';
 import '../state/auth_state.dart';
 import '../utils/error_messages.dart';
 import '../utils/haptic.dart';
+import '../widgets/small_loading_indicator.dart';
 
 /// Tam ekran bağlantı ayarları sayfası.
 /// Klavye ve yapıştırma (paste) düzgün çalışır; ayarlar kalıcıdır (uygulama otomatik silmez, kullanıcı çıkış yaparsa temizlenir).
@@ -50,7 +53,7 @@ class _ConnectSettingsScreenState extends State<ConnectSettingsScreen> {
 
   Future<void> _save() async {
     if (_loading) return;
-    if (!_formKey.currentState!.validate()) return;
+    if (_formKey.currentState?.validate() != true) return;
 
     setState(() {
       _loading = true;
@@ -79,23 +82,29 @@ class _ConnectSettingsScreenState extends State<ConnectSettingsScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Bağlantı ayarları'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+        child: CustomScrollView(
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
+          slivers: [
+            SliverAppBar(
+              title: const Text('Bağlantı ayarları'),
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.of(context).pop(),
+                tooltip: 'Geri',
+              ),
+              floating: true,
+              snap: true,
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.all(24),
+              sliver: SliverToBoxAdapter(
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
                   'Instance, API key ve varsayılan projeni burada ayarlayabilirsin. Ayarlar cihazda güvenli şekilde saklanır; uygulama otomatik temizlemez (yalnızca kullanıcı çıkış yaparsa temizlenir).',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
@@ -109,6 +118,7 @@ class _ConnectSettingsScreenState extends State<ConnectSettingsScreen> {
                     hintText: 'https://openproject.example.com',
                     prefixIcon: Icon(Icons.link_rounded),
                   ),
+                  autofillHints: const [AutofillHints.url],
                   keyboardType: TextInputType.url,
                   textInputAction: TextInputAction.next,
                   autocorrect: false,
@@ -145,6 +155,7 @@ class _ConnectSettingsScreenState extends State<ConnectSettingsScreen> {
                       tooltip: _obscureApiKey ? 'Göster' : 'Gizle',
                     ),
                   ),
+                  autofillHints: const [AutofillHints.password],
                   obscureText: _obscureApiKey,
                   enableSuggestions: false,
                   autocorrect: false,
@@ -192,7 +203,7 @@ class _ConnectSettingsScreenState extends State<ConnectSettingsScreen> {
                           onPressed: () {
                             Navigator.of(context).pop();
                             Navigator.of(context).pushNamedAndRemoveUntil(
-                              '/',
+                              AppRoutes.home,
                               (route) => false,
                             );
                           },
@@ -221,9 +232,8 @@ class _ConnectSettingsScreenState extends State<ConnectSettingsScreen> {
                         Expanded(
                           child: Text(
                             _error!,
-                            style: TextStyle(
+                            style: theme.textTheme.bodyMedium?.copyWith(
                               color: theme.colorScheme.onErrorContainer,
-                              fontSize: 14,
                             ),
                           ),
                         ),
@@ -232,23 +242,31 @@ class _ConnectSettingsScreenState extends State<ConnectSettingsScreen> {
                   ),
                   const SizedBox(height: 16),
                 ],
-                FilledButton.icon(
-                  onPressed: _loading ? null : _save,
-                  icon: _loading
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.check_rounded, size: 20),
-                  label: Text(_loading ? 'Bağlanıyor…' : 'Kaydet'),
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                Semantics(
+                  label: _loading ? AppStrings.labelConnecting : 'Bağlantı ayarlarını kaydet',
+                  button: true,
+                  child: FilledButton.icon(
+                    onPressed: _loading ? null : _save,
+                    icon: _loading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: SmallLoadingIndicator(),
+                          )
+                        : const Icon(Icons.check_rounded, size: 20),
+                    label: Text(_loading ? AppStrings.labelConnectingShort : 'Kaydet'),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
                   ),
                 ),
-              ],
+                      const SizedBox(height: 32),
+                    ],
+                  ),
+                ),
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );

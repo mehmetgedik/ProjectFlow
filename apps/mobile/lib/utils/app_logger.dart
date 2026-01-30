@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import 'error_messages.dart';
+
 /// Basit uygulama içi log sistemi.
 ///
 /// Şimdilik:
@@ -37,7 +39,8 @@ class AppLogger {
       _entries.removeAt(0);
     }
     if (kDebugMode) {
-      debugPrint('[${entry.timestamp.toIso8601String()}] [${entry.level}] $message ${error ?? ''}');
+      final safeError = error != null ? ErrorMessages.userFriendly(error) : '';
+      debugPrint('[${entry.timestamp.toIso8601String()}] [${entry.level}] $message $safeError');
     }
   }
 }

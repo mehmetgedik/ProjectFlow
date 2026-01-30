@@ -4,21 +4,21 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-import 'package:shared_preferences/shared_preferences.dart';
-
 import '../api/openproject_client.dart';
+import '../constants/connection_storage.dart';
+import '../init/platform_init.dart';
 import '../models/project.dart';
+import '../services/api_reference_cache.dart';
+import '../services/avatar_cache.dart';
 import '../services/local_notification_service.dart';
 import '../services/notification_background_service.dart';
-import 'notification_prefs.dart';
+import '../widgets/letter_avatar.dart';
 import '../services/time_tracking_reminder_service.dart';
+import 'notification_badge_state.dart';
 
 class AuthState extends ChangeNotifier {
-  static const _kKeyInstance = 'openproject.instanceBaseUrl';
-  static const _kKeyApiKey = 'openproject.apiKey';
-  static const _kKeyActiveProjectId = 'openproject.activeProjectId';
-
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
+  final NotificationBadgeState _notificationBadge = NotificationBadgeState();
 
   bool isInitialized = false;
   OpenProjectClient? client;
@@ -27,11 +27,9 @@ class AuthState extends ChangeNotifier {
   String? userLogin;
   String? userAvatarUrl;
   String? userEmail;
-  int unreadNotificationCount = 0;
 
-  /// Yeni bildirim geldiğinde telefon bildirimi göstermek için; -1 = henüz bilinmiyor.
-  int _lastNotifiedUnreadCount = -1;
-  Timer? _notificationPollTimer;
+  /// Okunmamış bildirim sayısı (NotificationBadgeState'ten iletilir).
+  int get unreadNotificationCount => _notificationBadge.unreadNotificationCount;
 
   String? _storedInstanceBaseUrl;
   String? _storedApiKey;
@@ -71,15 +69,16 @@ class AuthState extends ChangeNotifier {
   bool get isAuthenticated => client != null;
 
   Future<void> initialize() async {
-    _storedInstanceBaseUrl = await _storage.read(key: _kKeyInstance);
-    _storedApiKey = await _storage.read(key: _kKeyApiKey);
-    _activeProjectId = await _storage.read(key: _kKeyActiveProjectId);
+    await platformInitFuture;
+    _storedInstanceBaseUrl = await _storage.read(key: ConnectionStorageKeys.instanceBaseUrl);
+    _storedApiKey = await _storage.read(key: ConnectionStorageKeys.apiKey);
+    _activeProjectId = await _storage.read(key: ConnectionStorageKeys.activeProjectId);
 
     if (_storedInstanceBaseUrl != null &&
         _storedApiKey != null &&
         _storedInstanceBaseUrl!.isNotEmpty &&
         _storedApiKey!.isNotEmpty) {
-      final apiBase = _normalizeApiBase(_storedInstanceBaseUrl!);
+      final apiBase = normalizeApiBase(_storedInstanceBaseUrl!);
       client = OpenProjectClient(
         apiBase: Uri.parse(apiBase),
         apiKey: _storedApiKey!,
@@ -87,10 +86,11 @@ class AuthState extends ChangeNotifier {
       // API base örn: https://host/api/v3/ -> avatar URL'leri bu base ile oluşturulur (web ile aynı endpoint).
       _instanceOrigin = Uri.parse(apiBase);
       _instanceApiBaseUrl = apiBase.replaceAll(RegExp(r'/+$'), '');
-      await _loadLastNotifiedCountFromPrefs();
+      _notificationBadge.addListener(_onNotificationBadgeChanged);
+      _notificationBadge.start(client!);
       _loadUserDisplayName();
-      startNotificationPolling();
       registerBackgroundNotificationCheck();
+      await TimeTrackingReminderService().scheduleFromPrefs(client);
     }
 
     isInitialized = true;
@@ -111,7 +111,7 @@ class AuthState extends ChangeNotifier {
         if (userAvatarUrl == null || userAvatarUrl!.isEmpty) {
           final displayUrl = instanceDisplayUrl;
           if (displayUrl != null && displayUrl.isNotEmpty) {
-            userAvatarUrl = displayUrl.replaceAll(RegExp(r'/+$'), '') + '/my/avatar';
+            userAvatarUrl = '${displayUrl.replaceAll(RegExp(r'/+$'), '')}/my/avatar';
           }
         }
         notifyListeners();
@@ -119,12 +119,16 @@ class AuthState extends ChangeNotifier {
     } catch (_) {
       // ignore; user name is optional
     }
-    _refreshUnreadNotificationCount();
+    _notificationBadge.refreshUnreadNotificationCount();
   }
 
-  /// Okunmamış bildirim sayısını günceller (badge için). Hata durumunda 0 yapar.
+  void _onNotificationBadgeChanged() {
+    notifyListeners();
+  }
+
+  /// Okunmamış bildirim sayısını günceller (badge için).
   Future<void> refreshUnreadNotificationCount() async {
-    await _refreshUnreadNotificationCount();
+    await _notificationBadge.refreshUnreadNotificationCount();
   }
 
   /// Profil bilgisini API'den yeniden yükler (P1-F01 profil güncelleme sonrası).
@@ -132,73 +136,17 @@ class AuthState extends ChangeNotifier {
     await _loadUserDisplayName();
   }
 
-  Future<void> _loadLastNotifiedCountFromPrefs() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final last = prefs.getInt(kPrefKeyLastNotifiedUnreadCount);
-      if (last != null) _lastNotifiedUnreadCount = last;
-    } catch (_) {}
-  }
-
-  Future<void> _saveLastNotifiedCountToPrefs(int count) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt(kPrefKeyLastNotifiedUnreadCount, count);
-    } catch (_) {}
-  }
-
-  Future<void> _refreshUnreadNotificationCount() async {
-    final c = client;
-    if (c == null) return;
-    try {
-      final count = await c.getUnreadNotificationCount();
-      if (unreadNotificationCount != count) {
-        unreadNotificationCount = count;
-        notifyListeners();
-      }
-      // Yeni bildirim arttıysa telefon bildirimi göster (profil ayarına göre; ilk yüklemede gösterme).
-      if (_lastNotifiedUnreadCount >= 0 && count > _lastNotifiedUnreadCount) {
-        final showMobile = await NotificationPrefs.getMobileNotificationsEnabled();
-        if (showMobile) {
-          LocalNotificationService().showUnreadSummary(count: count);
-        }
-      }
-      _lastNotifiedUnreadCount = count;
-      await _saveLastNotifiedCountToPrefs(count);
-    } catch (_) {
-      if (unreadNotificationCount != 0) {
-        unreadNotificationCount = 0;
-        notifyListeners();
-      }
-    }
-  }
-
-  /// Uygulama açıkken periyodik kontrol (daha sık; 5 dakika). Arka plan için Workmanager kullanılır.
-  void startNotificationPolling() {
-    if (client == null || _notificationPollTimer != null) return;
-    _notificationPollTimer = Timer.periodic(
-      const Duration(minutes: 5),
-      (_) => refreshUnreadNotificationCount(),
-    );
-  }
-
-  void _stopNotificationPolling() {
-    _notificationPollTimer?.cancel();
-    _notificationPollTimer = null;
-    _lastNotifiedUnreadCount = -1;
-  }
-
   Future<void> connect({required String instanceBaseUrl, required String apiKey}) async {
     if (apiKey.isEmpty) throw Exception('API key boş olamaz.');
 
-    final apiBase = _normalizeApiBase(instanceBaseUrl);
+    final apiBase = normalizeApiBase(instanceBaseUrl);
     final c = OpenProjectClient(apiBase: Uri.parse(apiBase), apiKey: apiKey);
     _instanceOrigin = Uri.parse(apiBase);
 
     await c.validateMe();
 
-    await _storage.write(key: _kKeyInstance, value: instanceBaseUrl);
-    await _storage.write(key: _kKeyApiKey, value: apiKey);
+    await _storage.write(key: ConnectionStorageKeys.instanceBaseUrl, value: instanceBaseUrl);
+    await _storage.write(key: ConnectionStorageKeys.apiKey, value: apiKey);
 
     _storedInstanceBaseUrl = instanceBaseUrl;
     _storedApiKey = apiKey;
@@ -209,31 +157,35 @@ class AuthState extends ChangeNotifier {
       userLogin = me['login'];
       userAvatarUrl = me['avatar'];
     }
-    startNotificationPolling();
+    await LocalNotificationService().requestPermission();
+    _notificationBadge.addListener(_onNotificationBadgeChanged);
+    _notificationBadge.start(c);
     registerBackgroundNotificationCheck();
-    TimeTrackingReminderService().scheduleFromPrefs(c);
-    refreshUnreadNotificationCount();
+    await TimeTrackingReminderService().scheduleFromPrefs(c);
+    _notificationBadge.refreshUnreadNotificationCount();
     notifyListeners();
   }
 
   void setActiveProject(Project project) {
     activeProject = project;
     _activeProjectId = project.id;
-    _storage.write(key: _kKeyActiveProjectId, value: project.id);
+    _storage.write(key: ConnectionStorageKeys.activeProjectId, value: project.id);
     notifyListeners();
   }
 
   /// Çıkış: Oturum kapatılır; instance URL ve API key gibi ayarlar silinmez, tekrar girişte formda kalır.
   Future<void> logout() async {
-    _stopNotificationPolling();
+    _notificationBadge.removeListener(_onNotificationBadgeChanged);
+    _notificationBadge.stop();
     await cancelBackgroundNotificationCheck();
     await TimeTrackingReminderService().cancel();
+    AvatarCache.instance.clear();
+    LetterAvatar.clearFailedCache();
     client = null;
     activeProject = null;
     userDisplayName = null;
     userLogin = null;
     userAvatarUrl = null;
-    unreadNotificationCount = 0;
     _activeProjectId = null;
     _instanceOrigin = null;
     _instanceApiBaseUrl = null;
@@ -243,29 +195,27 @@ class AuthState extends ChangeNotifier {
 
   /// Saklanan tüm bağlantı bilgilerini siler (instance URL, API key, aktif proje). Oturum da kapatılır.
   Future<void> clearStoredSettings() async {
-    _stopNotificationPolling();
+    _notificationBadge.removeListener(_onNotificationBadgeChanged);
+    _notificationBadge.stop();
+    await cancelBackgroundNotificationCheck();
     await TimeTrackingReminderService().cancel();
-    await _storage.delete(key: _kKeyInstance);
-    await _storage.delete(key: _kKeyApiKey);
-    await _storage.delete(key: _kKeyActiveProjectId);
+    ApiReferenceCache.instance.clear();
+    AvatarCache.instance.clear();
+    LetterAvatar.clearFailedCache();
+    await _storage.delete(key: ConnectionStorageKeys.instanceBaseUrl);
+    await _storage.delete(key: ConnectionStorageKeys.apiKey);
+    await _storage.delete(key: ConnectionStorageKeys.activeProjectId);
     client = null;
     activeProject = null;
     userDisplayName = null;
     userLogin = null;
     userAvatarUrl = null;
-    unreadNotificationCount = 0;
     _storedInstanceBaseUrl = null;
     _storedApiKey = null;
     _activeProjectId = null;
     _instanceOrigin = null;
     _instanceApiBaseUrl = null;
     notifyListeners();
-  }
-
-  String _normalizeApiBase(String instanceBaseUrl) {
-    final base = instanceBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
-    if (base.endsWith('/api/v3')) return '$base/';
-    return '$base/api/v3/';
   }
 }
 

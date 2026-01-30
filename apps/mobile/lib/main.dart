@@ -1,48 +1,48 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:workmanager/workmanager.dart';
 
-import 'screens/connect_screen.dart';
-import 'screens/dashboard_screen.dart';
-import 'screens/my_work_packages_screen.dart';
-import 'screens/notifications_screen.dart';
+import 'app_navigation.dart';
+import 'app_providers.dart';
+import 'init/platform_init.dart';
 import 'screens/authenticated_gate_screen.dart';
-import 'screens/profile_screen.dart';
+import 'screens/connect_screen.dart';
 import 'screens/splash_screen.dart';
-import 'screens/time_tracking_screen.dart';
 import 'services/local_notification_service.dart';
-import 'services/notification_background_service.dart';
 import 'state/auth_state.dart';
 import 'state/theme_state.dart';
 import 'theme/app_theme.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  await Workmanager().initialize(callbackDispatcher);
-  await LocalNotificationService().initialize();
-  LocalNotificationService.onNotificationTappedCallback = (id, payload) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      navigatorKey.currentState?.pushNamed('/time-tracking');
-    });
-  };
-  SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-    DeviceOrientation.landscapeLeft,
-    DeviceOrientation.landscapeRight,
-  ]);
   runApp(
     MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => AuthState()),
-        ChangeNotifierProvider(create: (_) => ThemeState()),
-      ],
+      providers: appProviders,
       child: const ProjectFlowApp(),
     ),
   );
+  // İlk frame çizildikten sonra platform init; kısa gecikme ile ana thread’e
+  // nefes aldırıp “Skipped N frames” / Davey uyarılarını azaltıyoruz.
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    Future.delayed(const Duration(milliseconds: 150), () {
+      runPlatformInit().then((_) {
+        LocalNotificationService.onNotificationTappedCallback = (id, payload) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            navigatorKey.currentState?.pushNamed(AppRoutes.timeTracking);
+          });
+        };
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.portraitDown,
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
+        completePlatformInit();
+      });
+    });
+  });
 }
 
 class ProjectFlowApp extends StatelessWidget {
@@ -54,18 +54,13 @@ class ProjectFlowApp extends StatelessWidget {
       builder: (context, themeState, _) {
         return MaterialApp(
           navigatorKey: navigatorKey,
+          navigatorObservers: [appRouteObserver],
           title: 'ProjectFlow',
           debugShowCheckedModeBanner: false,
           theme: lightTheme,
           darkTheme: darkTheme,
           themeMode: themeState.themeMode,
-          routes: {
-            '/my-work': (_) => const MyWorkPackagesScreen(),
-            '/dashboard': (_) => const DashboardScreen(),
-            '/notifications': (_) => const NotificationsScreen(),
-            '/profile': (_) => const ProfileScreen(),
-            '/time-tracking': (_) => const TimeTrackingScreen(),
-          },
+          routes: AppRoutes.routes,
           home: const RootRouter(),
         );
       },

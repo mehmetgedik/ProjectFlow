@@ -1,5 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../utils/app_logger.dart';
 
 const _kKeyThemeMode = 'openproject.themeMode'; // 'light' | 'dark' | 'system'
 
@@ -28,7 +31,9 @@ class ThemeState extends ChangeNotifier {
         _themeMode = ThemeMode.system;
       }
       notifyListeners();
-    } catch (_) {}
+    } catch (e) {
+      if (kDebugMode) AppLogger.logError('Tema pref okunamadı', error: e);
+    }
   }
 
   Future<void> setThemeMode(ThemeMode mode) async {
@@ -43,6 +48,8 @@ class ThemeState extends ChangeNotifier {
         ThemeMode.system => 'system',
       };
       await prefs.setString(_kKeyThemeMode, value);
-    } catch (_) {}
+    } catch (e) {
+      if (kDebugMode) AppLogger.logError('Tema pref yazılamadı', error: e);
+    }
   }
 }
