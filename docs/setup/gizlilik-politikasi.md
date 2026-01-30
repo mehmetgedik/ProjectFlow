@@ -56,7 +56,7 @@ Bu politika güncellendiğinde, “Son güncelleme” tarihi değiştirilir. Ön
 
 ## 7. İletişim
 
-Gizlilik ile ilgili sorularınız için: **[Buraya e-posta adresinizi yazın]**
+Gizlilik ile ilgili sorularınız için: **mehmetgedik60@gmail.com**
 
 ---
 

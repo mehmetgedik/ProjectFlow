@@ -235,7 +235,7 @@ OpenProject hesabınızdan API anahtarını alıp ProjectFlow for OpenProject il
 | Alan | Değer |
 |------|--------|
 | Gizlilik politikası URL’i | *(Kendi URL’iniz, örn. GitHub Pages)* `https://mehmetgedik.github.io/ProjectFlow/gizlilik-politikasi.html` |
-| E-posta adresi | *(Kendi e-postanız)* örn. `mehmetgedik@gmail.com` |
+| E-posta adresi | *(Kendi e-postanız)* örn. `mehmetgedik60@gmail.com` |
 
 ---
 
