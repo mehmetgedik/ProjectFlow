@@ -110,7 +110,7 @@ class _WorkPackageDetailScreenState extends State<WorkPackageDetailScreen>
           onRetry: _load,
           errorTrailing: FilledButton.icon(
             onPressed: () => Navigator.of(context).pop(),
-            icon: const Icon(Icons.arrow_back),
+            icon: const Icon(Icons.arrow_back_rounded),
             label: const Text(AppStrings.buttonBack),
           ),
           child: const SizedBox.shrink(),

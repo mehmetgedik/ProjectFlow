@@ -402,7 +402,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                                     .map((e) => ListTile(
                                           title: Text(e.label),
                                           selected: statusType == e,
-                                          leading: statusType == e ? Icon(Icons.check, color: Theme.of(ctx).colorScheme.primary) : null,
+                                          leading: statusType == e ? Icon(Icons.check_rounded, color: Theme.of(ctx).colorScheme.primary) : null,
                                           onTap: () => Navigator.of(ctx).pop(e),
                                         )),
                               ],
@@ -449,7 +449,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                                     .map((e) => ListTile(
                                           title: Text(e.label),
                                           selected: typeType == e,
-                                          leading: typeType == e ? Icon(Icons.check, color: Theme.of(ctx).colorScheme.primary) : null,
+                                          leading: typeType == e ? Icon(Icons.check_rounded, color: Theme.of(ctx).colorScheme.primary) : null,
                                           onTap: () => Navigator.of(ctx).pop(e),
                                         )),
                               ],

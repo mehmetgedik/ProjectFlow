@@ -315,7 +315,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.close, size: 20),
+                  icon: const Icon(Icons.close_rounded, size: 20),
                   onPressed: () async {
                     await NotificationPrefs.setNotificationSettingsInfoDismissed(true);
                     if (mounted) setState(() => _showSettingsInfoBanner = false);
@@ -329,8 +329,23 @@ class _NotificationsScreenState extends State<NotificationsScreen>
               InkWell(
                 onTap: () async {
                   final uri = Uri.parse(settingsUrl);
-                  if (await canLaunchUrl(uri)) {
-                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  try {
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    } else {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Bu bağlantı açılamadı. Tarayıcı veya URL\'yi kontrol edin.')),
+                        );
+                      }
+                    }
+                  } catch (e, st) {
+                    AppLogger.logError('OpenProject bildirim ayarları linki açılırken hata', error: e, stackTrace: st);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Bağlantı açılamadı: ${ErrorMessages.userFriendly(e)}')),
+                      );
+                    }
                   }
                 },
                 child: Padding(

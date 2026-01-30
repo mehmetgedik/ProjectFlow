@@ -38,7 +38,7 @@ class FreePlanBanner extends StatelessWidget {
                   pro.dismissFreeBanner();
                 },
                 tooltip: 'Banner\'ı kapat',
-                icon: const Icon(Icons.close, size: 20),
+                icon: const Icon(Icons.close_rounded, size: 20),
                 style: IconButton.styleFrom(
                   minimumSize: const Size(36, 36),
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,

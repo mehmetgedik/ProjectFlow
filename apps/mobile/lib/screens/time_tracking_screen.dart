@@ -883,7 +883,7 @@ class _TimeTrackingScreenState extends State<TimeTrackingScreen>
               await _load();
             },
             tooltip: 'Zaman listesini yenile',
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh_rounded),
           ),
         ],
       ),
@@ -940,7 +940,7 @@ class _TimeTrackingScreenState extends State<TimeTrackingScreen>
                                           value: g,
                                           child: Row(
                                             children: [
-                                              if (_groupBy == g) Icon(Icons.check, size: 20, color: theme.colorScheme.primary),
+                                              if (_groupBy == g) Icon(Icons.check_rounded, size: 20, color: theme.colorScheme.primary),
                                               if (_groupBy == g) const SizedBox(width: 8),
                                               Text(g.label),
                                             ],
@@ -972,7 +972,7 @@ class _TimeTrackingScreenState extends State<TimeTrackingScreen>
                                           value: o,
                                           child: Row(
                                             children: [
-                                              if (_sortOrder == o) Icon(Icons.check, size: 20, color: theme.colorScheme.primary),
+                                              if (_sortOrder == o) Icon(Icons.check_rounded, size: 20, color: theme.colorScheme.primary),
                                               if (_sortOrder == o) const SizedBox(width: 8),
                                               Text(o.label),
                                             ],
@@ -1004,7 +1004,7 @@ class _TimeTrackingScreenState extends State<TimeTrackingScreen>
                                           value: s,
                                           child: Row(
                                             children: [
-                                              if (_sortBy == s) Icon(Icons.check, size: 20, color: theme.colorScheme.primary),
+                                              if (_sortBy == s) Icon(Icons.check_rounded, size: 20, color: theme.colorScheme.primary),
                                               if (_sortBy == s) const SizedBox(width: 8),
                                               Text(s.label),
                                             ],
@@ -1098,7 +1098,7 @@ class _TimeTrackingScreenState extends State<TimeTrackingScreen>
               heroTag: 'time_tracking_add',
               onPressed: _openAddTimeEntry,
               tooltip: 'Zaman kaydı ekle',
-              child: const Icon(Icons.add),
+              child: const Icon(Icons.add_rounded),
             )
           : Badge(
               label: Icon(Icons.star_rounded, size: 12, color: themeForBadge.colorScheme.onPrimary),
@@ -1108,7 +1108,7 @@ class _TimeTrackingScreenState extends State<TimeTrackingScreen>
                 heroTag: 'time_tracking_add',
                 onPressed: () => Navigator.of(context).pushNamed(AppRoutes.proUpgrade),
                 tooltip: 'Zaman kaydı ekle (Pro\'da)',
-                child: const Icon(Icons.add),
+                child: const Icon(Icons.add_rounded),
               ),
             ),
     );

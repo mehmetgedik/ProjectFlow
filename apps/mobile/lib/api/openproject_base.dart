@@ -73,11 +73,30 @@ abstract class OpenProjectBase {
   }
 
   Future<Map<String, dynamic>> patchJson(String path, Map<String, dynamic> body) async {
-    final uri = resolve(path);
-    final res = await http.patch(uri, headers: headers(jsonBody: true), body: jsonEncode(body));
-    checkResponse(res);
-    if (res.body.isEmpty) return <String, dynamic>{};
-    return jsonDecode(res.body) as Map<String, dynamic>;
+    final bodyBytes = utf8.encode(jsonEncode(body));
+    Uri uri = resolve(path);
+    final h = headers(jsonBody: true);
+    for (int redirectCount = 0; redirectCount < 3; redirectCount++) {
+      final res = await http.patch(uri, headers: h, body: bodyBytes);
+      if (res.statusCode == 307 || res.statusCode == 308) {
+        final location = res.headers['location'];
+        if (location != null && location.isNotEmpty) {
+          final next = Uri.tryParse(location);
+          if (next != null) {
+            uri = next.isAbsolute
+                ? next
+                : (location.startsWith('/')
+                    ? Uri.parse('${apiBase.origin}$location')
+                    : apiBase.resolve(location));
+            continue;
+          }
+        }
+      }
+      checkResponse(res);
+      if (res.body.isEmpty) return <String, dynamic>{};
+      return jsonDecode(res.body) as Map<String, dynamic>;
+    }
+    throw Exception('Çok fazla yönlendirme (308/307).');
   }
 
   Future<void> deleteJson(String path) async {

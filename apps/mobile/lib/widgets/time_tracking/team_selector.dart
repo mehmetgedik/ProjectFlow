@@ -68,7 +68,7 @@ class TimeTrackingTeamSelector extends StatelessWidget {
                 child: Row(
                   children: [
                     if (selectedUserId == id)
-                      Icon(Icons.check, size: 20, color: theme.colorScheme.primary),
+                      Icon(Icons.check_rounded, size: 20, color: theme.colorScheme.primary),
                     if (selectedUserId == id) const SizedBox(width: 8),
                     LetterAvatar(
                       displayName: name,

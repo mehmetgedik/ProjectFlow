@@ -27,7 +27,7 @@ class AppLogger {
 
   static List<AppLogEntry> get entries => List.unmodifiable(_entries);
 
-  static void logError(String message, {Object? error}) {
+  static void logError(String message, {Object? error, StackTrace? stackTrace}) {
     final entry = AppLogEntry(
       timestamp: DateTime.now(),
       level: 'ERROR',
@@ -41,6 +41,9 @@ class AppLogger {
     if (kDebugMode) {
       final safeError = error != null ? ErrorMessages.userFriendly(error) : '';
       debugPrint('[${entry.timestamp.toIso8601String()}] [${entry.level}] $message $safeError');
+      if (stackTrace != null) {
+        debugPrint(stackTrace.toString());
+      }
     }
   }
 }

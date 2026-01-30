@@ -422,7 +422,8 @@ class _NotificationSettingsCardState extends State<_NotificationSettingsCard> {
   }
 }
 
-/// OpenProject hesap tercihleri: saat dilimi ve bildirim ayarları (API: my_preferences).
+/// OpenProject hesap tercihleri: sadece saat dilimi (API: my_preferences).
+/// Bildirim tercihleri OpenProject web arayüzünden yönetilir; API uyumsuzlukları nedeniyle uygulama içinden kaldırıldı.
 class _UserPreferencesCard extends StatefulWidget {
   final AuthState auth;
 
@@ -436,7 +437,6 @@ class _UserPreferencesCardState extends State<_UserPreferencesCard> {
   bool _loading = true;
   String? _error;
   String? _timeZone;
-  Map<String, bool> _notifications = const {};
 
   static const List<MapEntry<String, String>> _timeZoneList = [
     MapEntry('UTC', 'UTC'),
@@ -458,25 +458,6 @@ class _UserPreferencesCardState extends State<_UserPreferencesCard> {
     MapEntry('Australia/Sydney', 'Sidney'),
   ];
 
-  static const Map<String, String> _notificationLabels = {
-    'watched': 'İzlediğim öğeler',
-    'involved': 'Atandığım / dahil olduğum',
-    'mentioned': 'Beni andılar',
-    'shared': 'Paylaşılan',
-    'newsAdded': 'Haber eklendi',
-    'newsCommented': 'Haber yorumu',
-    'documentAdded': 'Belge eklendi',
-    'forumMessages': 'Forum iletileri',
-    'wikiPageAdded': 'Wiki sayfası eklendi',
-    'wikiPageUpdated': 'Wiki sayfası güncellendi',
-    'membershipAdded': 'Üyelik eklendi',
-    'membershipUpdated': 'Üyelik güncellendi',
-    'workPackageCommented': 'İş paketi yorumu',
-    'workPackageProcessed': 'İş paketi işlendi',
-    'workPackagePrioritized': 'İş paketi önceliklendi',
-    'workPackageScheduled': 'İş paketi planlandı',
-  };
-
   @override
   void initState() {
     super.initState();
@@ -497,29 +478,12 @@ class _UserPreferencesCardState extends State<_UserPreferencesCard> {
       final data = await client.getMyPreferences();
       if (!mounted) return;
       final tz = data['timeZone']?.toString();
-      final notifRaw = data['notifications'];
-      Map<String, bool> notif = {};
-      if (notifRaw is Map) {
-        for (final e in notifRaw.entries) {
-          if (e.key is! String) continue;
-          final k = e.key as String;
-          bool v = false;
-          if (e.value == true) {
-            v = true;
-          } else if (e.value == false) {
-            v = false;
-          } else if (e.value is String) {
-            v = (e.value as String).toLowerCase() == 'true';
-          }
-          notif[k] = v;
-        }
-      }
       setState(() {
         _timeZone = tz;
-        _notifications = notif;
         _loading = false;
       });
-    } catch (e) {
+    } catch (e, st) {
+      AppLogger.logError('Hesap tercihleri yüklenirken hata', error: e, stackTrace: st);
       if (mounted) {
         setState(() {
           _error = ErrorMessages.userFriendly(e);
@@ -540,22 +504,8 @@ class _UserPreferencesCardState extends State<_UserPreferencesCard> {
       if (mounted) {
         showAppSnackBar(context, 'Saat dilimi güncellendi.');
       }
-    } catch (e) {
-      if (mounted) {
-        showErrorSnackBar(context, e, duration: const Duration(seconds: 5));
-      }
-    }
-  }
-
-  Future<void> _setNotification(String key, bool value) async {
-    final client = widget.auth.client;
-    if (client == null) return;
-    selectionClick();
-    final next = Map<String, bool>.from(_notifications)..[key] = value;
-    try {
-      await client.patchMyPreferences({'notifications': next});
-      if (mounted) setState(() => _notifications = next);
-    } catch (e) {
+    } catch (e, st) {
+      AppLogger.logError('Saat dilimi güncellenirken hata', error: e, stackTrace: st);
       if (mounted) {
         showErrorSnackBar(context, e, duration: const Duration(seconds: 5));
       }
@@ -613,19 +563,6 @@ class _UserPreferencesCardState extends State<_UserPreferencesCard> {
                 );
                 if (chosen != null) await _setTimeZone(chosen);
               },
-            ),
-            const Divider(height: 1),
-            ExpansionTile(
-              title: const Text('Bildirim tercihleri'),
-              subtitle: const Text('Hangi olaylarda bildirim alacağınızı seçin'),
-              children: [
-                for (final e in _notificationLabels.entries)
-                  SwitchListTile(
-                    title: Text(e.value, style: Theme.of(context).textTheme.bodyMedium),
-                    value: _notifications[e.key] ?? false,
-                    onChanged: (v) => _setNotification(e.key, v),
-                  ),
-              ],
             ),
           ],
         ),

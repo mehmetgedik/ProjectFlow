@@ -56,8 +56,8 @@
 
 | # | Kontrol | Sonuç | Not |
 |---|---------|--------|-----|
-| 5.1 | app-release.aab mevcut mu? | ☐ Eksik | **Yok.** `apps/mobile/build/app/outputs/bundle/release/app-release.aab` bulunamadı. |
-| 5.2 | Yapılacak | — | `cd apps/mobile` → `flutter build appbundle` çalıştırın; çıkan AAB’yi Play Console’a yükleyin. |
+| 5.1 | app-release.aab mevcut mu? | ☑ OK | **Var.** `flutter build appbundle` ile üretildi (45.8 MB). Yol: `apps/mobile/build/app/outputs/bundle/release/app-release.aab` |
+| 5.2 | Yükleme | ☐ | Bu AAB dosyasını Play Console’da “App bundle’ları yükle” ile yükleyin. |
 
 ---
 
@@ -95,7 +95,7 @@
 | **Versiyon / paket / imzalama** | ☑ Uygun; key.properties ve keystore mevcut. |
 | **Manifest / izinler** | ☑ Eksik izin yok. |
 | **Free/Pro kodu** | ☑ Tutarlı; ürün ID: projectflow_pro. |
-| **AAB** | ☐ **Yok** – `flutter build appbundle` ile üretilmeli. |
+| **AAB** | ☑ **Var** – `flutter build appbundle` ile üretildi (45.8 MB). |
 | **Play Console** | ☐ Uygulama + mağaza + IAP ürünü + politika URL’i + AAB yükleme sizin tamamlayacağınız adımlar. |
 
-**Sonuç:** Kod ve yerel yapılandırma Google Play yüklemesine **hazır**. Eksik olan: (1) **AAB’nin üretilmesi**, (2) **Play Console’da** uygulama oluşturma, mağaza listesi, **projectflow_pro** ürünü, gizlilik URL’i ve AAB yükleme.
+**Sonuç:** Kod, yerel yapılandırma ve AAB Google Play yüklemesine **hazır**. Kalan: **Play Console’da** uygulama oluşturma, mağaza listesi, **projectflow_pro** ürünü, gizlilik URL’i ve bu AAB’yi yükleyip incelemeye gönderme.

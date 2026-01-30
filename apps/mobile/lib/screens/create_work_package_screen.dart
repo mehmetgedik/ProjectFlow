@@ -951,7 +951,7 @@ class _ParentSearchSheetState extends State<_ParentSearchSheet> {
                     controller: _searchController,
                     decoration: InputDecoration(
                       hintText: 'ID veya başlıkla ara...',
-                      prefixIcon: Icon(Icons.search),
+                      prefixIcon: const Icon(Icons.search_rounded),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       isDense: true,
                     ),

@@ -304,7 +304,7 @@ class WorkPackageTimeEntriesTabState extends State<WorkPackageTimeEntriesTab>
                   button: true,
                   child: FilledButton.icon(
                     onPressed: _save,
-                    icon: const Icon(Icons.check),
+                    icon: const Icon(Icons.check_rounded),
                     label: const Text('Kaydet'),
                   ),
                 ),

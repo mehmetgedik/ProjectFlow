@@ -89,7 +89,7 @@ class _ConnectSettingsScreenState extends State<ConnectSettingsScreen> {
             SliverAppBar(
               title: const Text('Bağlantı ayarları'),
               leading: IconButton(
-                icon: const Icon(Icons.arrow_back),
+                icon: const Icon(Icons.arrow_back_rounded),
                 onPressed: () => Navigator.of(context).pop(),
                 tooltip: 'Geri',
               ),
