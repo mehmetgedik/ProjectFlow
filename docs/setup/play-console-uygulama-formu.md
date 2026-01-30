@@ -1,6 +1,6 @@
 # Google Play Console – Uygulama Oluştur / Store Listesi Formu
 
-Bu doküman, **ProjectFlow** uygulamasını Play Console’da oluştururken ve mağaza listesini doldururken kopyala-yapıştır yapabileceğiniz tüm alanları içerir. **[ ]** içindeki yerleri kendi bilgilerinizle değiştirin.
+Bu doküman, **ProjectFlow for OpenProject** uygulamasını Play Console’da oluştururken ve mağaza listesini doldururken kopyala-yapıştır yapabileceğiniz tüm alanları içerir. **[ ]** içindeki yerleri kendi bilgilerinizle değiştirin.
 
 ---
 
@@ -8,7 +8,7 @@ Bu doküman, **ProjectFlow** uygulamasını Play Console’da oluştururken ve m
 
 | Alan | Değer |
 |------|--------|
-| **Uygulama adı** | ProjectFlow |
+| **Uygulama adı** | ProjectFlow for OpenProject |
 | **Varsayılan dil** | Türkçe (Türkiye) — veya İngilizce (ABD) |
 | **Uygulama mı yoksa oyun mu?** | Uygulama |
 | **Ücretsiz mi ücretli mi?** | Ücretsiz |
@@ -22,34 +22,42 @@ Bu doküman, **ProjectFlow** uygulamasını Play Console’da oluştururken ve m
 
 | Alan | Karakter sınırı | Değer (kopyala-yapıştır) |
 |------|------------------|--------------------------|
-| **Uygulama adı** | 30 | ProjectFlow |
-| **Kısa açıklama** | 80 | OpenProject hesabına bağlan; iş paketleri, bildirimler ve zaman kayıtları. |
+| **Uygulama adı** | 30 | ProjectFlow for OpenProject |
+| **Kısa açıklama** | 80 | Ücretsiz indir; OpenProject’e bağlan. Pro tek seferlik satın alma ile gelişmiş özellikler. |
 | **Uzun açıklama** | 4000 | Aşağıdaki “Uzun açıklama metni” kutusundan kopyalayın. |
 
 **Uzun açıklama metni (Türkçe):**
 ```
-ProjectFlow, OpenProject sunucunuza bağlanan mobil istemcidir.
+ProjectFlow for OpenProject, OpenProject sunucunuza bağlanan mobil istemcidir.
 
+ÜCRETSİZ SÜRÜM — Uygulama ücretsiz indirilir; temel özellikler herkese açıktır.
 • Bağlantı: Instance URL ve API anahtarı ile güvenli giriş
 • İş paketleri: Listeleme, detay, hızlı güncellemeler
 • Bildirimler: OpenProject bildirimlerinizi takip edin
-• Zaman kayıtları: Hızlı time entry
+• Zaman kayıtları: Temel time entry
 • Projeler: Proje seçimi ve favoriler
 
-OpenProject hesabınızdan API anahtarını alıp ProjectFlow ile bağlanarak işlerinizi mobilde yönetin.
+PRO SÜRÜMÜ (ÜCRETLİ — UYGULAMA İÇİ SATIN ALMA)
+Pro, tek seferlik uygulama içi satın alma ile açılır. Ödeme Google Play üzerinden yapılır; kredi kartı vb. uygulama tarafından saklanmaz. Pro ile: gelişmiş zaman takibi, özel kolonlar, takım zaman görünümü, Gantt ve daha fazlası. İlk kullanımda kısa deneme süresi sunulabilir.
+
+OpenProject hesabınızdan API anahtarını alıp ProjectFlow for OpenProject ile bağlanarak işlerinizi mobilde yönetin.
 ```
 
 **Uzun açıklama (İngilizce) – ikinci dil ekliyorsanız:**
 ```
-ProjectFlow is the mobile client for your OpenProject server.
+ProjectFlow for OpenProject is the mobile client for your OpenProject server.
 
+FREE VERSION — The app is free to download; core features are available to everyone.
 • Connect: Sign in with your instance URL and API key
 • Work packages: List, view details, quick updates
 • Notifications: Keep track of your OpenProject notifications
-• Time entries: Quick time logging
+• Time entries: Basic time logging
 • Projects: Switch projects and use favorites
 
-Get your API key from OpenProject and manage your work on the go with ProjectFlow.
+PRO VERSION (PAID — IN-APP PURCHASE)
+Pro is unlocked with a one-time in-app purchase. Payment is processed by Google Play; the app does not store card or payment details. Pro includes: advanced time tracking, custom columns, team time view, Gantt and more. A short trial may be offered on first use.
+
+Get your API key from OpenProject and manage your work on the go with ProjectFlow for OpenProject.
 ```
 
 ---

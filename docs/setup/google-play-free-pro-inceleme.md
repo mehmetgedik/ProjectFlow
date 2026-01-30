@@ -1,4 +1,4 @@
-# ProjectFlow – Google Play yükleme hazırlığı (Ücretsiz / Pro inceleme)
+# ProjectFlow for OpenProject – Google Play yükleme hazırlığı (Ücretsiz / Pro inceleme)
 
 Bu doküman, **ücretsiz + Pro (uygulama içi satın alma)** eklenmiş haliyle uygulamanın Google Play’e yüklenmeye hazır olup olmadığını madde madde özetler.
 
@@ -83,9 +83,9 @@ Uygulama **ücretsiz**; gelir **uygulama içi satın alma** (Pro) ile. Play Cons
 
 - **Fiyatlandırma:** Ücretsiz.
 - **Uygulama içi ürünler:** Evet (Pro tek seferlik ürün).
-- **Kısa açıklama** örneği (max 80 kr):  
-  `OpenProject hesabına bağlan; iş paketleri, bildirimler, zaman kayıtları. Pro ile daha fazlası.`
-- **Uzun açıklama:** Mevcut metne “Pro sürümü: gelişmiş zaman takibi, özel kolonlar, Gantt görünümü vb.” gibi bir cümle ekleyebilirsiniz (isteğe bağlı).
+- **Uygulama adı (Store):** ProjectFlow for OpenProject (max 30 kr).
+- **Kısa açıklama** (max 80 kr): `Ücretsiz indir; OpenProject’e bağlan. Pro tek seferlik satın alma ile gelişmiş özellikler.`
+- **Uzun açıklama:** Ücretsiz sürüm / Pro (ücretli, uygulama içi satın alma) ve ödeme bilgisi `play-console-uygulama-formu.md` ve `uygulama-ekle-adim-adim.md` içinde güncel metinle yer alır.
 
 ---
 

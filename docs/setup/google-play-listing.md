@@ -1,26 +1,26 @@
 # Google Play Store – ProjectFlow Yayın Bilgileri
 
-Bu doküman, **ProjectFlow – Mobile Client for OpenProject** uygulamasının Google Play’de yayınlanması için gerekli store listing ve teknik bilgileri özetler.
+Bu doküman, **ProjectFlow for OpenProject** uygulamasının Google Play’de yayınlanması için gerekli store listing ve teknik bilgileri özetler.
 
 ## Uygulama kimliği
 
 | Alan | Değer |
 |------|--------|
-| **Uygulama adı (cihazda)** | ProjectFlow |
-| **Store başlığı (önerilen)** | ProjectFlow *(max 30 karakter; tam ifade: "ProjectFlow – Mobile Client for OpenProject" kısa açıklamada kullanılabilir)* |
+| **Uygulama adı (cihazda)** | ProjectFlow *(kısa; isteğe bağlı “ProjectFlow for OpenProject”)* |
+| **Store başlığı (önerilen)** | ProjectFlow for OpenProject *(max 30 karakter)* |
 | **Paket adı (applicationId)** | `com.openproject.openproject_mobile` |
 | **Versiyon** | `pubspec.yaml` → `version: 1.0.0+1` (versionName + versionCode) |
 
 ## Store listing (Play Console)
 
 ### Kısa açıklama (Short description) – max 80 karakter
-Örnek:
+Örnek (Türkçe):
 ```
-OpenProject hesabına bağlan; temel özellikler ücretsiz, Pro ile daha fazlası.
+Ücretsiz indir; OpenProject’e bağlan. Pro tek seferlik satın alma ile gelişmiş özellikler.
 ```
 İngilizce örnek:
 ```
-Connect to OpenProject. Free core features; unlock more with Pro.
+Free download; connect to OpenProject. Pro one-time purchase unlocks advanced features.
 ```
 
 ### Uzun açıklama (Full description) – max 4000 karakter
@@ -77,7 +77,7 @@ Core features are free; Pro unlocks time reporting, saved views, attachments, an
 ## Proje içi marka kullanımı
 
 - **Logo:** `apps/mobile/assets/icon/app_icon.png` (splash, connect ekranı ve launcher ikonu bu dosyayı kullanır)
-- **Uygulama başlığı:** Tüm UI’da “ProjectFlow”; alt metin olarak “Mobile Client for OpenProject” / “OpenProject hesabına bağlan” kullanılıyor
+- **Uygulama başlığı:** Store’da “ProjectFlow for OpenProject”; UI’da “ProjectFlow” veya “ProjectFlow for OpenProject”
 - **Android `android:label`:** `ProjectFlow` (`AndroidManifest.xml`)
 
 Bu dosyayı yayın sürecinde güncelleyebilirsiniz (ör. final store metinleri, gizlilik politikası linki).
