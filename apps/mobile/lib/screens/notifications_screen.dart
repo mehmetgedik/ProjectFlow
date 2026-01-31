@@ -62,7 +62,17 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     await runLoad(() async {
       final c = client;
       if (c == null) throw Exception('Oturum bulunamadı.');
-      _items = await c.getNotifications(onlyUnread: _onlyUnread);
+      // Bildirimlerle birlikte saat dilimi tercihini al; böylece saatler doğru gösterilir.
+      final notifsFuture = c.getNotifications(onlyUnread: _onlyUnread);
+      final prefsFuture = c.getMyPreferences().catchError((_) => <String, dynamic>{});
+      final results = await Future.wait([notifsFuture, prefsFuture]);
+      final list = results[0] as List<NotificationItem>;
+      final prefs = results[1] as Map<String, dynamic>;
+      final tzId = prefs['timeZone'] ?? prefs['time_zone'];
+      if (tzId != null && tzId.toString().trim().isNotEmpty) {
+        DateFormatters.preferredTimeZoneId = tzId.toString().trim();
+      }
+      _items = list;
       _items.sort((a, b) {
         final ad = a.createdAt;
         final bd = b.createdAt;

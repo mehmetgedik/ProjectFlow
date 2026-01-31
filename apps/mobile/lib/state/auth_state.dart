@@ -142,6 +142,7 @@ class AuthState extends ChangeNotifier {
     final apiBase = normalizeApiBase(instanceBaseUrl);
     final c = OpenProjectClient(apiBase: Uri.parse(apiBase), apiKey: apiKey);
     _instanceOrigin = Uri.parse(apiBase);
+    _instanceApiBaseUrl = apiBase.replaceAll(RegExp(r'/+$'), '');
 
     await c.validateMe();
 

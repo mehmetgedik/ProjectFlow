@@ -95,15 +95,20 @@ class LocalNotificationService {
     }
   }
 
-  /// Bildirime tıklandığında çağrılır; zaman takibi bildirimi ise zaman takibi sayfasına gidilmesi için main’de kullanılır.
-  static void Function(int id, String? payload)? onNotificationTappedCallback;
+  /// Tıklanınca main'de kullanılır: açılacak sayfa route'u (örn. /notifications, /time-tracking) veya null.
+  static void Function(String? route)? onNotificationTappedCallback;
 
   void _onNotificationTapped(NotificationResponse response) {
     final id = response.id ?? -1;
     final payload = response.payload;
-    if (_isTimeTrackingNotificationId(id) || payload == 'time_tracking') {
-      onNotificationTappedCallback?.call(id, payload);
-    }
+    final String? route = _routeForTappedNotification(id, payload);
+    onNotificationTappedCallback?.call(route);
+  }
+
+  static String? _routeForTappedNotification(int id, String? payload) {
+    if (payload == 'time_tracking' || _isTimeTrackingNotificationId(id)) return '/time-tracking';
+    if (payload == 'openproject_notifications' || id == 0) return '/notifications';
+    return null;
   }
 
   /// Android 13+ bildirim iznini ister. İzin verilmezse bildirimler gösterilmez.
@@ -132,6 +137,7 @@ class LocalNotificationService {
       'ProjectFlow',
       body ?? (count == 1 ? '1 okunmamış bildirim' : '$count okunmamış bildirim'),
       const NotificationDetails(android: android),
+      payload: 'openproject_notifications',
     );
   }
 

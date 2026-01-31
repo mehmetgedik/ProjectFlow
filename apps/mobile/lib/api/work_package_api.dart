@@ -78,18 +78,50 @@ class WorkPackageApi {
 
   Future<List<WorkPackage>> getWorkPackagesByIds(List<String> ids) async {
     if (ids.isEmpty) return const [];
-    final uniqueIds = ids.toSet().toList(growable: false);
-    final filters = [
-      {'id': {'operator': '=', 'values': uniqueIds}},
-    ];
-    final query = <String, String>{
-      'filters': jsonEncode(filters),
-      'pageSize': uniqueIds.length.clamp(1, 100).toString(),
-      'offset': '1',
-    };
-    final data = await _base.getJson('/work_packages', query: query);
-    final elements = _base.elementsFromResponse(data);
-    return elements.whereType<Map>().map(WorkPackage.fromJson).toList(growable: false);
+    // Boş ve sayısal olmayan id'leri atla
+    final validIds = ids
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty && int.tryParse(id) != null)
+        .toSet()
+        .toList(growable: false);
+    if (validIds.isEmpty) return const [];
+
+    // Önce toplu id filtresi dene; bazı sunucular "Id filtrede geçersiz değerler var" (400) döner
+    try {
+      final filters = [
+        {'id': {'operator': '=', 'values': validIds}},
+      ];
+      final query = <String, String>{
+        'filters': jsonEncode(filters),
+        'pageSize': validIds.length.clamp(1, 100).toString(),
+        'offset': '1',
+      };
+      final data = await _base.getJson('/work_packages', query: query);
+      final elements = _base.elementsFromResponse(data);
+      return elements.whereType<Map>().map(WorkPackage.fromJson).toList(growable: false);
+    } on Exception catch (e) {
+      final msg = e.toString();
+      if (msg.contains('InvalidQuery') ||
+          msg.contains('Id filtrede') ||
+          msg.contains('400')) {
+        return _getWorkPackagesByIdsOneByOne(validIds);
+      }
+      rethrow;
+    }
+  }
+
+  /// Id filtresi desteklenmeyen sunucularda tek tek GET /work_packages/:id ile çeker.
+  Future<List<WorkPackage>> _getWorkPackagesByIdsOneByOne(List<String> ids) async {
+    final results = await Future.wait(
+      ids.map((id) async {
+        try {
+          return await getWorkPackage(id);
+        } catch (_) {
+          return null;
+        }
+      }),
+    );
+    return results.whereType<WorkPackage>().toList(growable: false);
   }
 
   Future<List<Map<String, String>>> getStatuses() async {

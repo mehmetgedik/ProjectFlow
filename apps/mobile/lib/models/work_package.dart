@@ -1,3 +1,5 @@
+import '../utils/date_formatters.dart';
+
 class WorkPackage {
   final String id;
   final String subject;
@@ -67,12 +69,12 @@ class WorkPackage {
       subject: (json['subject'] ?? '').toString(),
       statusName: (status?['title'] ?? '').toString(),
       assigneeName: assignee?['title']?.toString(),
-      startDate: start != null && start.isNotEmpty ? DateTime.tryParse(start) : null,
-      dueDate: due != null && due.isNotEmpty ? DateTime.tryParse(due) : null,
+      startDate: DateFormatters.parseApiDateTime(start),
+      dueDate: DateFormatters.parseApiDateTime(due),
       description: rawDesc != null && rawDesc.isNotEmpty ? rawDesc : null,
       priorityName: priority?['title']?.toString(),
       typeName: type?['title']?.toString(),
-      updatedAt: updated != null && updated.isNotEmpty ? DateTime.tryParse(updated) : null,
+      updatedAt: DateFormatters.parseApiDateTime(updated),
       projectId: _idFromHref(project?['href']),
       statusId: _idFromHref(status?['href']),
       assigneeId: _idFromHref(assignee?['href']),

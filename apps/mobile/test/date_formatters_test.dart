@@ -36,5 +36,32 @@ void main() {
         '2024-03-05',
       );
     });
+
+    test('parseApiDateTime with Z returns UTC', () {
+      final dt = DateFormatters.parseApiDateTime('2025-01-31T14:00:00Z');
+      expect(dt, isNotNull);
+      expect(dt!.isUtc, true);
+      expect(dt.hour, 14);
+    });
+
+    test('parseApiDateTime without timezone treats as UTC', () {
+      final dt = DateFormatters.parseApiDateTime('2025-01-31T14:00:00');
+      expect(dt, isNotNull);
+      expect(dt!.isUtc, true);
+      expect(dt.hour, 14);
+    });
+
+    test('parseApiDateTime date-only (no T) parses as-is', () {
+      final dt = DateFormatters.parseApiDateTime('2025-01-31');
+      expect(dt, isNotNull);
+      expect(dt!.year, 2025);
+      expect(dt.month, 1);
+      expect(dt.day, 31);
+    });
+
+    test('parseApiDateTime null or empty returns null', () {
+      expect(DateFormatters.parseApiDateTime(null), isNull);
+      expect(DateFormatters.parseApiDateTime(''), isNull);
+    });
   });
 }

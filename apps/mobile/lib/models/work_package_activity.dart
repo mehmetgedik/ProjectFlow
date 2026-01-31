@@ -1,3 +1,5 @@
+import '../utils/date_formatters.dart';
+
 class WorkPackageActivity {
   final String id;
   final String authorName;
@@ -34,7 +36,7 @@ class WorkPackageActivity {
       id: (json['id'] ?? '').toString(),
       authorName: (author?['title'] ?? '').toString(),
       authorId: _idFromHref(authorHref),
-      createdAt: created != null ? DateTime.tryParse(created) ?? DateTime.now() : DateTime.now(),
+      createdAt: DateFormatters.parseApiDateTime(created?.toString()) ?? DateTime.now(),
       isComment: (json['_type']?.toString() ?? '').contains('Comment'),
       comment: comment == null ? null : (comment['raw'] ?? comment['html'] ?? '').toString(),
     );

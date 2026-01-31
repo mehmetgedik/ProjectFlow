@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../models/project.dart';
@@ -296,6 +297,10 @@ class ProfileScreen extends StatelessWidget {
             _UserPreferencesCard(auth: auth),
             const SizedBox(height: 24),
             _TimeTrackingReminderCard(auth: auth),
+            if (kDebugMode) ...[
+              const SizedBox(height: 24),
+              _ErrorLogCard(),
+            ],
           ],
           const SizedBox(height: 32),
           Padding(
@@ -417,6 +422,38 @@ class _NotificationSettingsCardState extends State<_NotificationSettingsCard> {
             onChanged: _onMobileNotificationsChanged,
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Hata günlüğünü panoya kopyala; hatayı paylaşmak için kullanılır.
+class _ErrorLogCard extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final count = AppLogger.entries.length;
+    return Card(
+      child: ListTile(
+        leading: Icon(
+          count > 0 ? Icons.bug_report : Icons.assignment_outlined,
+          color: count > 0 ? Theme.of(context).colorScheme.error : null,
+        ),
+        title: const Text('Hata günlüğünü kopyala'),
+        subtitle: Text(
+          count > 0
+              ? '$count kayıt var — hatayı iletmek için kopyalayıp yapıştırabilirsiniz'
+              : 'Henüz hata kaydı yok',
+        ),
+        trailing: const Icon(Icons.copy),
+        onTap: () {
+          final text = AppLogger.getLogsAsText();
+          if (text.isEmpty) {
+            showAppSnackBar(context, 'Kopyalanacak hata kaydı yok.');
+            return;
+          }
+          Clipboard.setData(ClipboardData(text: text));
+          showAppSnackBar(context, 'Hata günlüğü panoya kopyalandı. İstediğiniz yere yapıştırabilirsiniz.');
+        },
       ),
     );
   }

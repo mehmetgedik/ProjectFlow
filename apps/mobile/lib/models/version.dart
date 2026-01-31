@@ -1,3 +1,5 @@
+import '../utils/date_formatters.dart';
+
 /// OpenProject versiyon/sprint: iş paketleri bu versiyona atanabilir.
 /// status: 'open' | 'closed' | 'finished' — aynı anda tek bir açık sprint aktif kabul edilir.
 class Version {
@@ -24,8 +26,8 @@ class Version {
       id: (json['id'] is int) ? json['id'] as int : int.tryParse(json['id']?.toString() ?? '0') ?? 0,
       name: (json['name'] ?? '').toString(),
       status: (json['status'] ?? 'closed').toString().toLowerCase(),
-      startDate: start != null && start.isNotEmpty ? DateTime.tryParse(start) : null,
-      endDate: end != null && end.isNotEmpty ? DateTime.tryParse(end) : null,
+      startDate: DateFormatters.parseApiDateTime(start),
+      endDate: DateFormatters.parseApiDateTime(end),
     );
   }
 }

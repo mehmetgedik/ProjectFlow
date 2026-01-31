@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../constants/app_strings.dart';
+import '../models/project.dart';
 import '../state/auth_state.dart';
+import '../utils/date_formatters.dart';
 import '../utils/error_messages.dart';
 import '../utils/haptic.dart';
 import '../widgets/small_loading_indicator.dart';
@@ -36,7 +38,16 @@ class _AuthenticatedGateScreenState extends State<AuthenticatedGateScreen> {
       _error = null;
     });
     try {
-      final projects = await client.getProjects();
+      // Projelerle birlikte hesap tercihini (saat dilimi) al; bildirim/aktivite saatleri doğru gösterilsin.
+      final projectsFuture = client.getProjects();
+      final prefsFuture = client.getMyPreferences().catchError((_) => <String, dynamic>{});
+      final results = await Future.wait([projectsFuture, prefsFuture]);
+      final projects = results[0] as List<Project>;
+      final prefs = results[1] as Map<String, dynamic>;
+      final tzId = prefs['timeZone'] ?? prefs['time_zone'];
+      if (tzId != null && tzId.toString().trim().isNotEmpty) {
+        DateFormatters.preferredTimeZoneId = tzId.toString().trim();
+      }
       if (!mounted) return;
       final savedId = auth.activeProjectId;
       if (savedId != null && projects.any((p) => p.id == savedId)) {

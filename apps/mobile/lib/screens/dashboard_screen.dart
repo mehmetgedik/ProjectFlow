@@ -10,6 +10,7 @@ import '../models/work_package.dart';
 import '../state/auth_state.dart';
 import '../state/dashboard_prefs.dart';
 import '../state/pro_state.dart';
+import '../utils/app_logger.dart';
 import '../utils/date_formatters.dart';
 import '../utils/haptic.dart';
 import '../widgets/async_content.dart';
@@ -72,23 +73,28 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Future<void> _loadPrefs() async {
-    final showStatus = await DashboardPrefs.getShowStatusChart();
-    final showType = await DashboardPrefs.getShowTypeChart();
-    final showTimeSeries = await DashboardPrefs.getShowTimeSeriesChart();
-    final showUpcoming = await DashboardPrefs.getShowUpcoming();
-    final statusTypeStr = await DashboardPrefs.getStatusChartType();
-    final typeTypeStr = await DashboardPrefs.getTypeChartType();
-    if (!mounted) return;
-    setState(() {
-      _showStatusChart = showStatus;
-      _showTypeChart = showType;
-      _showTimeSeriesChart = showTimeSeries;
-      _showUpcoming = showUpcoming;
-      final statusMatch = DashboardChartType.values.where((e) => e.name == statusTypeStr);
-      _statusChartType = statusMatch.isEmpty ? DashboardChartType.bar : statusMatch.first;
-      final typeMatch = DashboardChartType.values.where((e) => e.name == typeTypeStr);
-      _typeChartType = typeMatch.isEmpty ? DashboardChartType.pie : typeMatch.first;
-    });
+    try {
+      final showStatus = await DashboardPrefs.getShowStatusChart();
+      final showType = await DashboardPrefs.getShowTypeChart();
+      final showTimeSeries = await DashboardPrefs.getShowTimeSeriesChart();
+      final showUpcoming = await DashboardPrefs.getShowUpcoming();
+      final statusTypeStr = await DashboardPrefs.getStatusChartType();
+      final typeTypeStr = await DashboardPrefs.getTypeChartType();
+      if (!mounted) return;
+      setState(() {
+        _showStatusChart = showStatus;
+        _showTypeChart = showType;
+        _showTimeSeriesChart = showTimeSeries;
+        _showUpcoming = showUpcoming;
+        final statusMatch = DashboardChartType.values.where((e) => e.name == statusTypeStr);
+        _statusChartType = statusMatch.isEmpty ? DashboardChartType.bar : statusMatch.first;
+        final typeMatch = DashboardChartType.values.where((e) => e.name == typeTypeStr);
+        _typeChartType = typeMatch.isEmpty ? DashboardChartType.pie : typeMatch.first;
+      });
+    } catch (e, st) {
+      AppLogger.logError('Dashboard ayarları yüklenirken hata', error: e, stackTrace: st);
+      if (mounted) setState(() {});
+    }
   }
 
   Future<void> _load() async {
@@ -137,9 +143,14 @@ class _DashboardScreenState extends State<DashboardScreen>
 
       final recentIds = await DashboardPrefs.getRecentlyOpenedIds();
       if (recentIds.isNotEmpty) {
-        final recent = await c.getWorkPackagesByIds(recentIds);
-        final byId = {for (final wp in recent) wp.id: wp};
-        _recentlyOpened = recentIds.map((id) => byId[id]).whereType<WorkPackage>().toList();
+        try {
+          final recent = await c.getWorkPackagesByIds(recentIds);
+          final byId = {for (final wp in recent) wp.id: wp};
+          _recentlyOpened = recentIds.map((id) => byId[id]).whereType<WorkPackage>().toList();
+        } catch (e) {
+          AppLogger.logError('Dashboard son açılanlar yüklenemedi', error: e);
+          _recentlyOpened = const [];
+        }
       } else {
         _recentlyOpened = const [];
       }
@@ -148,7 +159,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       final list = views.where((q) => !q.hidden).toList();
       list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
       _views = list;
-    });
+    }, onError: (e) => AppLogger.logError('Dashboard yüklenirken hata', error: e));
   }
 
   int get _openCount => _items.length;

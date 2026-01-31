@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import '../utils/date_formatters.dart';
+
 class TimeEntry {
   final String id;
   final DateTime spentOn;
@@ -54,24 +56,11 @@ class TimeEntry {
       }
     }
 
-    DateTime spent;
-    try {
-      spent = spentOnRaw != null ? DateTime.parse(spentOnRaw) : DateTime.now();
-    } catch (e) {
-      if (kDebugMode) debugPrint('TimeEntry spentOn parse: $e');
-      spent = DateTime.now();
-    }
+    final spent = spentOnRaw != null && spentOnRaw.trim().isNotEmpty
+        ? (DateFormatters.parseApiDateTime(spentOnRaw) ?? DateTime.now())
+        : DateTime.now();
 
-    DateTime? createdAt;
-    try {
-      final raw = json['createdAt']?.toString();
-      if (raw != null && raw.isNotEmpty) createdAt = DateTime.parse(raw);
-    } catch (e) {
-      if (kDebugMode) {
-        // ignore: avoid_print
-        debugPrint('TimeEntry createdAt parse: $e');
-      }
-    }
+    final createdAt = DateFormatters.parseApiDateTime(json['createdAt']?.toString());
 
     final links = json['_links'] as Map<String, dynamic>? ?? const {};
     final activity = links['activity'] as Map<String, dynamic>?;

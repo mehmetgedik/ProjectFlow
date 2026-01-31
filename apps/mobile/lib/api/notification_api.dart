@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../models/notification_item.dart';
+import '../utils/app_logger.dart';
 import 'openproject_base.dart';
 
 class NotificationApi {
@@ -21,10 +22,10 @@ class NotificationApi {
 
     final res = await _base.getResponse('/notifications', query: query);
     if (res.statusCode == 404) {
-      throw Exception(
-        'Bildirim API\'si bu OpenProject kurulumunda kullanılamıyor (HTTP 404). '
-        'Sunucu tarafında bildirim özelliği devre dışı olabilir.',
-      );
+      final msg = 'Bildirim API\'si bu OpenProject kurulumunda kullanılamıyor (HTTP 404). '
+          'Sunucu tarafında bildirim özelliği devre dışı olabilir.';
+      AppLogger.logError('NotificationApi.getNotifications', error: Exception(msg));
+      throw Exception(msg);
     }
     if (res.statusCode == 400) {
       if (onlyUnread) {
@@ -37,13 +38,19 @@ class NotificationApi {
           return list.where((n) => !n.read).toList(growable: false);
         }
       }
-      throw Exception('Bildirim listesi alınamadı (filtre sunucu tarafından kabul edilmedi).');
+      final msg = 'Bildirim listesi alınamadı (filtre sunucu tarafından kabul edilmedi).';
+      AppLogger.logError('NotificationApi.getNotifications', error: Exception(msg));
+      throw Exception(msg);
     }
     if (res.statusCode == 401 || res.statusCode == 403) {
-      throw Exception('Yetkisiz erişim (HTTP ${res.statusCode}). API key ve yetkileri kontrol edin.');
+      final msg = 'Yetkisiz erişim (HTTP ${res.statusCode}). API key ve yetkileri kontrol edin.';
+      AppLogger.logError('NotificationApi.getNotifications', error: Exception(msg));
+      throw Exception(msg);
     }
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw Exception('İstek başarısız oldu (HTTP ${res.statusCode}): ${res.body}');
+      final msg = 'İstek başarısız oldu (HTTP ${res.statusCode}): ${res.body}';
+      AppLogger.logError('NotificationApi.getNotifications', error: Exception(msg));
+      throw Exception(msg);
     }
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     final elements = _base.elementsFromResponse(data);
@@ -84,7 +91,9 @@ class NotificationApi {
       );
     }
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw Exception('Bildirim okundu olarak işaretlenemedi (HTTP ${res.statusCode}).');
+      final msg = 'Bildirim okundu olarak işaretlenemedi (HTTP ${res.statusCode}).';
+      AppLogger.logError('NotificationApi.markNotificationRead', error: Exception(msg));
+      throw Exception(msg);
     }
   }
 
@@ -96,12 +105,14 @@ class NotificationApi {
       body: jsonEncode(<String, dynamic>{}),
     );
     if (res.statusCode == 404) {
-      throw Exception(
-        'Bildirim API\'si bu OpenProject kurulumunda kullanılamıyor (HTTP 404).',
-      );
+      final msg = 'Bildirim API\'si bu OpenProject kurulumunda kullanılamıyor (HTTP 404).';
+      AppLogger.logError('NotificationApi.markAllNotificationsRead', error: Exception(msg));
+      throw Exception(msg);
     }
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw Exception('Tümü okundu işaretlenemedi (HTTP ${res.statusCode}).');
+      final msg = 'Tümü okundu işaretlenemedi (HTTP ${res.statusCode}).';
+      AppLogger.logError('NotificationApi.markAllNotificationsRead', error: Exception(msg));
+      throw Exception(msg);
     }
   }
 }

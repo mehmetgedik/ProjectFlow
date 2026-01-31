@@ -115,12 +115,11 @@ class LetterAvatar extends StatelessWidget {
     final url = imageUrl!.trim();
     final uri = Uri.tryParse(url);
     if (uri == null || !_isLikelyAvatarUrl(uri)) return _buildLetterAvatar(context);
-    if (_failedUrls.contains(url)) return _buildLetterAvatar(context);
-
-    // Uzantısız URL: önce önbelleğe bak, yoksa HTTP ile çek; Content-Type bitmap ise göster (SVG/HTML decoder'a gitmesin).
+    // Önbellekte varsa öncelik ver; daha önce hata veren URL bile cache'den gösterilebilir.
     if (_isExtensionLessAvatarUrl(uri)) {
       final cached = AvatarCache.instance.get(url);
       if (cached != null) {
+        _failedUrls.remove(url);
         final pixelSize = (size * 2).toInt().clamp(1, 256);
         return SizedBox(
           width: size,
@@ -134,13 +133,14 @@ class LetterAvatar extends StatelessWidget {
               cacheWidth: pixelSize,
               cacheHeight: pixelSize,
               errorBuilder: (_, e, s) {
-                _recordFailedUrl(url);
+                AvatarCache.instance.remove(url);
                 return _buildLetterAvatar(context);
               },
             ),
           ),
         );
       }
+      if (_failedUrls.contains(url)) return _buildLetterAvatar(context);
       return _AvatarFromUrl(
         url: url,
         headers: imageHeaders,
@@ -283,7 +283,7 @@ class _AvatarFromUrlState extends State<_AvatarFromUrl> {
           cacheWidth: pixelSize,
           cacheHeight: pixelSize,
           errorBuilder: (_, e, s) {
-            widget.onFailed();
+            AvatarCache.instance.remove(widget.url);
             return widget.fallback;
           },
         ),

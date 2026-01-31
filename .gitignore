@@ -9,6 +9,7 @@ apps/mobile/keystores/
 **/credentials.json
 **/*-credentials.json
 **/*.pem
+bilgiler.txt
 
 # IDE/geçici – repoya eklenmemeli (Cursor/VS Code run artifact)
 apps/mobile/Get
@@ -47,6 +48,9 @@ build/
 
 # Log/OS
 *.log
+
+# Android emülatör / cihaz bug raporları
+bugreport*.zip
 
 # Android Studio
 .externalNativeBuild/

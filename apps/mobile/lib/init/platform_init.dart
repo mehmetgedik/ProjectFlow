@@ -13,9 +13,10 @@ final Completer<void> _platformInitCompleter = Completer<void>();
 Future<void> get platformInitFuture => _platformInitCompleter.future;
 
 /// Workmanager ve LocalNotificationService init. main.dart ilk frame sonrası çağırır.
+/// Önce timezone ayarlanır; böylece bildirim/liste saatleri doğru gösterilir.
 Future<void> runPlatformInit() async {
-  await Workmanager().initialize(callbackDispatcher);
   await LocalNotificationService().initialize();
+  await Workmanager().initialize(callbackDispatcher);
 }
 
 /// Init bittikten sonra main.dart tarafından çağrılır (callback ve SystemChrome ayarları yapıldıktan sonra).

@@ -27,6 +27,14 @@ class AvatarCache {
     return _cache[key];
   }
 
+  /// Tek bir URL'nin önbelleğini kaldırır (decode hatası vb. için).
+  void remove(String url) {
+    final key = _normalizeKey(url);
+    if (key.isEmpty) return;
+    _cache.remove(key);
+    _order.remove(key);
+  }
+
   /// İndirilen avatar bytes'ını önbelleğe yazar.
   void put(String url, Uint8List bytes) {
     final key = _normalizeKey(url);

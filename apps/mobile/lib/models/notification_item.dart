@@ -1,3 +1,5 @@
+import '../utils/date_formatters.dart';
+
 class NotificationItem {
   final String id;
   /// Bildirimin konusu (iş paketi başlığı). API'de bazen _links.resource.title'dan gelir (web ile uyumlu).
@@ -56,15 +58,8 @@ class NotificationItem {
     // Web'deki gibi: subject bazen kökte yok, _links.resource.title'dan alınır.
     final subject = (json['subject']?.toString() ?? resource?['title']?.toString() ?? '').trim();
 
-    DateTime? created;
-    final createdRaw = json['createdAt'] as String?;
-    if (createdRaw != null) {
-      try {
-        created = DateTime.parse(createdRaw);
-      } catch (_) {
-        created = null;
-      }
-    }
+    final createdRaw = (json['createdAt'] ?? json['created_at']) as String?;
+    final created = DateFormatters.parseApiDateTime(createdRaw);
 
     return NotificationItem(
       id: (json['id'] ?? '').toString(),
