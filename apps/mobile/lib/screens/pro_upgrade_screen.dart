@@ -172,7 +172,7 @@ class ProUpgradeScreen extends StatelessWidget {
                 ],
                 OutlinedButton.icon(
                   onPressed: () => ProFreeComparison.showSheet(context),
-                  icon: const Icon(Icons.table_chart_outlined, size: 20),
+                  icon: const Icon(Icons.compare_arrows_rounded, size: 20),
                   label: const Text('Ücretsiz ve Pro özellik karşılaştırması'),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
